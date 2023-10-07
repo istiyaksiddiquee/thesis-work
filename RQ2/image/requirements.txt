@@ -1,0 +1,9 @@
+scikit-learn
+pandas
+numpy
+chardet
+xgboost
+imbalanced-learn
+ray[tune,default, train]
+matplotlib
+mlflow
