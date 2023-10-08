@@ -1,0 +1,44 @@
+{
+    "os": "Windows-10-10.0.22621-SP0",
+    "python": "3.10.11",
+    "heartbeatAt": "2023-10-08T14:12:25.003661",
+    "startedAt": "2023-10-08T14:12:19.876774",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "<python with no main file>",
+    "codePathLocal": null,
+    "git": {
+        "remote": "https://github.com/istiyaksiddiquee/thesis-work.git",
+        "commit": "f837768185b6c004d74a843debeef5d07d03a47a"
+    },
+    "email": "istiyaksiddiquee@gmail.com",
+    "root": "E:/Fake News Project/thesis work",
+    "host": "bOKA-pc",
+    "username": "istiyak",
+    "executable": "c:\\Program Files\\Python310\\python.exe",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 1600.0,
+        "min": 0.0,
+        "max": 1800.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1600.0,
+            "min": 0.0,
+            "max": 1800.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 499.99999618530273,
+            "used": 374.8272018432617
+        }
+    },
+    "memory": {
+        "total": 31.851795196533203
+    }
+}
