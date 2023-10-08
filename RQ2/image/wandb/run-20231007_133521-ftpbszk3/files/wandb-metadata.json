@@ -1,0 +1,45 @@
+{
+    "os": "Windows-10-10.0.22621-SP0",
+    "python": "3.10.11",
+    "heartbeatAt": "2023-10-07T11:35:22.459287",
+    "startedAt": "2023-10-07T11:35:21.646322",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "E:\\Fake News Project\\thesis work\\RQ2\\image\\wandb_table.py",
+    "codePathLocal": "wandb_table.py",
+    "codePath": "RQ2\\image\\wandb_table.py",
+    "git": {
+        "remote": "https://github.com/istiyaksiddiquee/thesis-work.git",
+        "commit": "8e937856231204db5318de9b09a5b136ceb95364"
+    },
+    "email": "istiyaksiddiquee@gmail.com",
+    "root": "E:/Fake News Project/thesis work",
+    "host": "bOKA-pc",
+    "username": "istiyak",
+    "executable": "C:\\Program Files\\Python310\\python.exe",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 1600.0,
+        "min": 0.0,
+        "max": 1800.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1600.0,
+            "min": 0.0,
+            "max": 1800.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 499.99999618530273,
+            "used": 374.8263397216797
+        }
+    },
+    "memory": {
+        "total": 31.851795196533203
+    }
+}

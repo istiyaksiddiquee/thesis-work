@@ -1,0 +1,20 @@
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Current SDK version is 0.15.12
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Configure stats pid to 13460
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Loading settings from C:\Users\istiyak\.config\wandb\settings
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Loading settings from E:\Fake News Project\thesis work\RQ2\image\wandb\settings
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Loading settings from environment variables: {'api_key': '***REDACTED***', 'entity': 'istiyaksiddiquee', 'project': 'test-1'}
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'RQ2\\image\\wandb_table.py', 'program_abspath': 'E:\\Fake News Project\\thesis work\\RQ2\\image\\wandb_table.py', 'program': 'E:\\Fake News Project\\thesis work\\RQ2\\image\\wandb_table.py'}
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_init.py:_log_setup():528] Logging user logs to E:\Fake News Project\thesis work\RQ2\image\wandb\run-20231007_133522-rqfz3n7m\logs\debug.log
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_init.py:_log_setup():529] Logging internal logs to E:\Fake News Project\thesis work\RQ2\image\wandb\run-20231007_133522-rqfz3n7m\logs\debug-internal.log
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_init.py:init():568] calling init triggers
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_init.py:init():575] wandb.init called with sweep_config: {}
+config: {}
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_init.py:init():613] wandb.init() called when a run is still active
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_run.py:_finish():1934] finishing run istiyaksiddiquee/test-1/ftpbszk3
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_run.py:_atexit_cleanup():2168] got exitcode: 0
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_run.py:_restore():2151] restore
+2023-10-07 13:35:22,584 INFO    MainThread:13460 [wandb_run.py:_restore():2157] restore done
+2023-10-07 13:35:30,472 INFO    MainThread:13460 [wandb_run.py:_footer_history_summary_info():3599] rendering history
+2023-10-07 13:35:30,472 INFO    MainThread:13460 [wandb_run.py:_footer_history_summary_info():3631] rendering summary
+2023-10-07 13:35:30,472 INFO    MainThread:13460 [wandb_run.py:_footer_sync_info():3558] logging synced files
