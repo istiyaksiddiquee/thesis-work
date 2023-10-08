@@ -211,6 +211,7 @@ def filter_and_split_df(df: pd.DataFrame):
 
 @task(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
+
     outer_cv = RepeatedKFold(n_splits=5, n_repeats=1)
 
     dt_avg_prec = 0
@@ -228,12 +229,14 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     loop_index = 0
 
     for train_index, val_index in outer_cv.split(X_train_val.to_numpy()):
+
         loop_index += 1
 
         X_train, X_val = (
             X_train_val.iloc[train_index, :],
             X_train_val.iloc[val_index, :],
         )
+
         y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
 
         normalized_df = copy(X_train)
@@ -257,14 +260,22 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         )
 
         inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
-
-        dt_model, svc_model, rf_model, logit_model, xgb_model = fit_multiple_models(
+        
+        dt_result, svc_result, rf_result, logit_result, xgb_result = fit_multiple_models(
             scaled_resampled_X_train, scaled_resampled_y_train, inner_cv
         )
+
+        dt_model = dt_result.best_estimator_
+        svc_model = svc_result.best_estimator_
+        rf_model = rf_result.best_estimator_
+        logit_model = logit_result.best_estimator_
+        xgb_model = xgb_result.best_estimator_
+        
 
         wandb.init(
             project="thesis", group="logistic", job_type="epoch_" + str(loop_index)
         )
+
         logit_Y_pred = logit_model.best_estimator_.predict(X_val)
         logit_Y_pred_proba = logit_model.best_estimator_.predict_proba(X_val)
         logit_custom_score = get_all_scores(
@@ -350,15 +361,15 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     dt = DecisionTreeClassifier(
         **trained_dt_model.best_params_, random_state=random_state
     )
-    refit_dt = dt.fit(scaled_X_train_val, y_train_val)
+    refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
     svm = SVC(**trained_svc_model.best_params_, random_state=random_state)
-    refit_svm = svm.fit(scaled_X_train_val, y_train_val)
+    refit_svm = svm.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
     rf = RandomForestClassifier(
         **trained_rf_model.best_params_, random_state=random_state
     )
-    refit_rf = rf.fit(scaled_X_train_val, y_train_val)
+    refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
     logistic = LogisticRegression(
         **trained_logit_model.best_params_, random_state=random_state
@@ -369,15 +380,15 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
     xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
     xgboost = xgboost.set_params(**trained_xgb_model)
-    refit_xgb = xgboost.fit(scaled_X_train_val, y_train_val)
+    refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-    joblib.dump(refit_dt, "decision_tree")
-    joblib.dump(refit_svm, "svc")
-    joblib.dump(refit_rf, "random_forest")
-    joblib.dump(refit_logit, "logistic")
-    joblib.dump(refit_xgb, "xgboost")
-
-    return refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb
+    # joblib.dump(refit_dt, "decision_tree")
+    # joblib.dump(refit_svm, "svc")
+    # joblib.dump(refit_rf, "random_forest")
+    # joblib.dump(refit_logit, "logistic")
+    # joblib.dump(refit_xgb, "xgboost")
+    dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
+    return refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb, dummy_false
 
 
 def get_data_pipeline_with_smotetomek():
@@ -401,6 +412,7 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
+@task(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
 def model_fitting_loop_with_grid_search(
     model, x_train_df, y_train_df, inner_cv, grid_param, model_name
 ):
@@ -424,8 +436,9 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@dynamic
+@dynamic(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
 def fit_multiple_models(x_train_df, y_train_df, inner_cv):
+
     # Logistic Regression
     logit_grid = {
         "penalty": ["l1", "l2", "elasticnet", None],
@@ -510,11 +523,11 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
     # scorer_
 
     return (
-        dt_result.best_estimator_,
-        svc_result.best_estimator_,
-        rf_result.best_estimator_,
-        logit_result.best_estimator_,
-        xgb_result.best_estimator_,
+        dt_result,
+        svc_result,
+        rf_result,
+        logit_result,
+        xgb_result,
     )
 
 
@@ -524,15 +537,23 @@ def flip_true_false(y):
     return flipped_y
 
 
-# @workflow
+@workflow
 def work():
     next_val = 16
-    df = read_files(".")
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"]="istiyaksiddiquee"
+
+    # csv_path = '/root'
+    csv_path = "."
+
+    df = read_files(csv_path)
+
     X_train_val, X_test, y_train_val, y_test = filter_and_split_df(df)
 
     # call the nested loop to get all the trained models
     print(X_train_val.shape, X_test.shape, y_train_val.shape, y_test.shape)
-    refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb = nested_loop(
+    refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb, dummy_false = nested_loop(
         X_train_val, y_train_val
     )
 
@@ -575,7 +596,7 @@ def work():
     logit_chart = imbalanced_performance_summary(logit_custom_score, "logistic")
 
     wandb.finish()
-
+    
     # wandb.log({"summary_metrics": logit_chart})
 
     flipped_logit_custom_score = get_all_scores(
@@ -695,10 +716,27 @@ def work():
         flipped_xgb_thresholds,
     ) = precision_recall_curve(flip_true_false(y_test), xgb_Y_pred_proba[:, 0])
 
+
+    # -----------------------------------------------
+    # -------- Process Dummy False Result ------------
+    # -----------------------------------------------
+
+    wandb.init(project="thesis", group="dummy_false")
+    dummy_Y_pred = dummy_false.predict(scaled_X_test)
+    dummy_Y_pred_proba = dummy_false.predict_proba(scaled_X_test)
+    dummy_custom_score = get_all_scores(y_test, dummy_Y_pred, dummy_Y_pred_proba[:, 1])
+    
+    wandb.log(convert_scores_to_dict(dummy_custom_score))
+    logit_chart = imbalanced_performance_summary(dummy_custom_score, "dummy_false")
+
+    wandb.finish()
+    
+
+
     # -----------------------------------------------
     # -------- Process LGBM Model Result ------------
     # -----------------------------------------------
-
+    
     # -----------------------------------------------
     # -------- Plot PR and Flipped PR Curve ---------
     # -----------------------------------------------
@@ -706,23 +744,29 @@ def work():
     # PR Curve
 
     # create precision recall curve
-    fig, ax = plt.subplots()
 
+    no_skill = len(y_test[y_test==1]) / len(y_test)
+
+    fig, ax = plt.subplots()
+    
     ax.plot(logit_precision, logit_recall, color="black", label="logistic")
     ax.plot(dt_precision, dt_recall, color="blue", label="decision_tree")
     ax.plot(svm_precision, svm_recall, color="green", label="svc")
     ax.plot(rf_precision, rf_recall, color="red", label="random_forest")
     ax.plot(xgb_precision, xgb_recall, color="yellow", label="xgboost")
-
+    ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
+    
     # add axis labels to plot
     ax.set_title("Precision-Recall Curve")
     ax.set_ylabel("Precision")
     ax.set_xlabel("Recall")
 
+    wandb.log({"PRC": fig})
     # display plot
 
     fig, ax = plt.subplots()
 
+    no_skill = len(y_test[y_test==0]) / len(y_test)
     ax.plot(
         flipped_logit_precision, flipped_logit_recall, color="black", label="logistic"
     )
@@ -732,13 +776,14 @@ def work():
     ax.plot(flipped_svm_precision, flipped_svm_recall, color="green", label="svc")
     ax.plot(flipped_rf_precision, flipped_rf_recall, color="red", label="random_forest")
     ax.plot(flipped_xgb_precision, flipped_xgb_recall, color="yellow", label="xgboost")
+    ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
 
     # add axis labels to plot
     ax.set_title("Precision-Recall Curve for Positive Class")
     ax.set_ylabel("Precision")
     ax.set_xlabel("Recall")
 
-    # wandb.log({"PRC-2": fig})
+    wandb.log({"PRC-Positive": fig})
 
     # # plt.savefig('PR-test.jpeg')
 

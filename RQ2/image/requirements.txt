@@ -7,3 +7,4 @@ imbalanced-learn
 ray[tune,default, train]
 matplotlib
 mlflow
+flytekitplugins-ray
