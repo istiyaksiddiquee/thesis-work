@@ -1,0 +1,15 @@
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+sudo apt-get install python3-pip
+python3 -m pip install ansible
+sudo apt install ansible
+ansible --version
+ssh-keygen
+ssh-copy-id siddiquee@192.168.0.105
+sudo apt-get update
+sudo apt-get install python
+
+ansible -i inventory all -m ping
+ansible-playbook -i inventory install.yaml --ask-become-pass
+
+helm repo add flyteorg https://flyteorg.github.io/flyte
+helm install -n flyte -f starter.yaml --create-namespace flyte flyteorg/flyte-sandbox
