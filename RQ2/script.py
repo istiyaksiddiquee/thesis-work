@@ -210,11 +210,18 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
     outer_cv = RepeatedKFold(n_splits=5, n_repeats=1)
 
+    dt_epoch_id = -1
+    rf_epoch_id = -1
+    svc_epoch_id = -1
+    logit_epoch_id = -1
+    xgb_epoch_id = -1
+    lgb_epoch_id = -1
+    
     dt_avg_prec = 0
     rf_avg_prec = 0
     svc_avg_prec = 0
@@ -277,7 +284,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         lgb_model = lgb_result.best_estimator_                
 
         wandb.init(
-            project="thesis", group="logistic", job_type=epoch_str
+            project="thesis", group="logit", job_type=epoch_str
         )
 
         logit_Y_pred = logit_model.best_estimator_.predict(X_val)
@@ -296,7 +303,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         wandb.finish()
 
         wandb.init(
-            project="thesis", group="decision_tree", job_type="epoch_" + str(loop_index)
+            project="thesis", group="dt", job_type="epoch_" + str(loop_index)
         )
         dt_Y_pred = dt_model.predict(X_val)
         dt_Y_pred_proba = dt_model.predict_proba(X_val)
@@ -326,7 +333,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         wandb.finish()
 
         wandb.init(
-            project="thesis", group="random_forest", job_type="epoch_" + str(loop_index)
+            project="thesis", group="rf", job_type="epoch_" + str(loop_index)
         )
         rf_Y_pred = rf_model.predict(X_val)
         rf_Y_pred_proba = rf_model.predict_proba(X_val)
@@ -342,7 +349,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         wandb.finish()
 
         wandb.init(
-            project="thesis", group="xgboost", job_type="epoch_" + str(loop_index)
+            project="thesis", group="xgb", job_type="epoch_" + str(loop_index)
         )
         xgb_Y_pred = xgb_model.predict(X_val)
         xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
@@ -379,26 +386,32 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         if dt_avg_prec < dt_custom_score.avg_precision:
             dt_avg_prec = dt_custom_score.avg_precision
             trained_dt_model = dt_model
+            dt_epoch_id = loop_index
 
         if rf_avg_prec < rf_custom_score.avg_precision:
             rf_avg_prec = rf_custom_score.avg_precision
             trained_rf_model = rf_model
+            rf_epoch_id = loop_index
 
         if svc_avg_prec < svc_custom_score.avg_precision:
             svc_avg_prec = svc_custom_score.avg_precision
             trained_svc_model = svc_model
+            svc_epoch_id = loop_index
 
         if xgb_avg_prec < xgb_custom_score.avg_precision:
             xgb_avg_prec = xgb_custom_score.avg_precision
             trained_xgb_model = xgb_model
+            xgb_epoch_id = loop_index
 
         if logit_avg_prec < logit_custom_score.avg_precision:
             logit_avg_prec = logit_custom_score.avg_precision
             trained_logit_model = logit_model
+            logit_epoch_id = loop_index
         
         if lgb_avg_prec < lgb_custom_score.avg_precision:
             lgb_avg_prec = lgb_custom_score.avg_precision
             trained_lgb_model = lgb_model
+            lgb_epoch_id = loop_index
 
     normalized_df = copy(X_train_val)
     cd_first_quantile = np.quantile(normalized_df["size"], 0.25)
@@ -451,8 +464,91 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     
     dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
     
+    ## store logit model
+    wandb.init(project="thesis", group="logit", job_type="final")
+    joblib.dump(refit_logit, "logit.joblib")
+    logit_artifact = wandb.Artifact(
+        "Logistic Model",
+        type="model",
+        description="selected Logistic model",
+        metadata={"parameters": trained_logit_model.best_params_, "epoch": logit_epoch_id},
+    )
+    
+    logit_artifact.add_file('logit.joblib')
+    wandb.log_artifact(logit_artifact)
+    wandb.finish()
+
+    ## store rf model
+    wandb.init(project="thesis", group="rf", job_type="final")
+    joblib.dump(refit_rf, "rf.joblib")
+    rf_artifact = wandb.Artifact(
+        "RF Model",
+        type="model",
+        description="selected RF model",
+        metadata={"parameters": trained_rf_model.best_params_, "epoch": rf_epoch_id},
+    )
+    
+    rf_artifact.add_file('rf.joblib')
+    wandb.log_artifact(rf_artifact)
+    wandb.finish()
+
+    ## store svc model
+    wandb.init(project="thesis", group="svc", job_type="final")
+    joblib.dump(refit_svm, "svc.joblib")
+    svc_artifact = wandb.Artifact(
+        "SVC Model",
+        type="model",
+        description="selected SVC model",
+        metadata={"parameters": trained_svc_model.best_params_, "epoch": svc_epoch_id},
+    )
+    
+    svc_artifact.add_file('svc.joblib')
+    wandb.log_artifact(svc_artifact)
+    wandb.finish()
+
+    ## store dt model
+    wandb.init(project="thesis", group="dt", job_type="final")
+    joblib.dump(refit_dt, "dt.joblib")
+    dt_artifact = wandb.Artifact(
+        "DT Model",
+        type="model",
+        description="selected DT model",
+        metadata={"parameters": trained_dt_model.best_params_, "epoch": dt_epoch_id},
+    )
+    
+    dt_artifact.add_file('dt.joblib')
+    wandb.log_artifact(dt_artifact)
+    wandb.finish()
+    
+    ## store xgb model
+    wandb.init(project="thesis", group="xgb", job_type="final")
+    joblib.dump(refit_xgb, "xgb.joblib")
+    xgb_artifact = wandb.Artifact(
+        "XGB Model",
+        type="model",
+        description="selected XGB model",
+        metadata={"parameters": trained_xgb_model.best_params_, "epoch": xgb_epoch_id},
+    )
+    
+    xgb_artifact.add_file('xgb.joblib')
+    wandb.log_artifact(xgb_artifact)
+    wandb.finish()
+    
+    ## store lgb model
+    wandb.init(project="thesis", group="lgb", job_type="final")
+    joblib.dump(refit_lgb, "lgb.joblib")
+    lgb_artifact = wandb.Artifact(
+        "LGB Model",
+        type="model",
+        description="selected LGB model",
+        metadata={"parameters": trained_lgb_model.best_params_, "epoch": lgb_epoch_id},
+    )
+    
+    lgb_artifact.add_file('lgb.joblib')
+    wandb.log_artifact(lgb_artifact)
+    wandb.finish()
+    
     # joblib.dump(refit_dt, "decision_tree")
-    # joblib.dump(refit_svm, "svc")
     # joblib.dump(refit_rf, "random_forest")
     # joblib.dump(refit_logit, "logistic")
     # joblib.dump(refit_xgb, "xgboost")
@@ -481,7 +577,7 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-@task(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def model_fitting_loop_with_grid_search(
     model, x_train_df, y_train_df, inner_cv, grid_param, model_name
 ):
@@ -505,7 +601,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-base-image:1.0.0")
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     # Logistic Regression
@@ -650,11 +746,27 @@ def work():
 
     X_train_val, X_test, y_train_val, y_test = filter_and_split_df(df)
 
+    with open("./x_train_val.pickle", "wb") as file:
+        pickle.dump(X_train_val, file)
+    
+    with open("./y_train_val.pickle", "wb") as file:
+        pickle.dump(y_train_val, file)
+    
+    with open("./x_test.pickle", "wb") as file:
+        pickle.dump(X_test, file)
+    
+    with open("./y_test.pickle", "wb") as file:
+        pickle.dump(y_test, file)        
+
     # call the nested loop to get all the trained models
     print(X_train_val.shape, X_test.shape, y_train_val.shape, y_test.shape)
     refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb, refit_lgb, dummy_false = nested_loop(
         X_train_val, y_train_val
     )
+
+    # store all these models here
+    
+    
 
     # with open("./logit.pickle", "wb") as file:
     #     pickle.dump(refit_logit, file)
@@ -664,317 +776,314 @@ def work():
 
     # log all the trained models here with wandb artifact
 
-    normalized_df = copy(X_test)
-    cd_first_quantile = np.quantile(normalized_df["size"], 0.25)
-    cd_third_quantile = np.quantile(normalized_df["size"], 0.75)
-    normalized_df["depth"] = np.log(normalized_df["depth"])
-    normalized_df["size"] = np.log(normalized_df["size"])
-    normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-    normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
-    normalized_df["characteristic_distance"] = np.log(
-        normalized_df["characteristic_distance"]
-        + cd_first_quantile**2 / cd_third_quantile
-    )
+    # normalized_df = copy(X_test)
+    # cd_first_quantile = np.quantile(normalized_df["size"], 0.25)
+    # cd_third_quantile = np.quantile(normalized_df["size"], 0.75)
+    # normalized_df["depth"] = np.log(normalized_df["depth"])
+    # normalized_df["size"] = np.log(normalized_df["size"])
+    # normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+    # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+    # normalized_df["characteristic_distance"] = np.log(
+    #     normalized_df["characteristic_distance"]
+    #     + cd_first_quantile**2 / cd_third_quantile
+    # )
 
-    scaler = StandardScaler().set_output(transform="pandas")
-    scaled_X_test = scaler.fit_transform(normalized_df)
+    # scaler = StandardScaler().set_output(transform="pandas")
+    # scaled_X_test = scaler.fit_transform(normalized_df)
 
-    # -----------------------------------------------
-    # ------- Process Logistic Model Result ---------
-    # -----------------------------------------------
+    # # -----------------------------------------------
+    # # ------- Process Logistic Model Result ---------
+    # # -----------------------------------------------
 
-    wandb.init(project="thesis", group="lgb")
-    lgb_Y_pred = refit_lgb.predict(scaled_X_test)
-    lgb_Y_pred_proba = refit_lgb.predict_proba(scaled_X_test)
-    lgb_custom_score = get_all_scores(y_test, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
-    lgb_precision, lgb_recall, lgb_thresholds = precision_recall_curve(
-        y_test, lgb_Y_pred_proba[:, 1]
-    )
+    # wandb.init(project="thesis", group="logit")
+    # logit_Y_pred = refit_logit.predict(scaled_X_test)
+    # logit_Y_pred_proba = refit_logit.predict_proba(scaled_X_test)
+    # logit_custom_score = get_all_scores(y_test, logit_Y_pred, logit_Y_pred_proba[:, 1])
+    # logit_precision, logit_recall, logit_thresholds = precision_recall_curve(
+    #     y_test, logit_Y_pred_proba[:, 1]
+    # )
 
-    wandb.log(convert_scores_to_dict(lgb_custom_score))
-    lgb_chart = imbalanced_performance_summary(lgb_custom_score, "lgb")
+    # wandb.log(convert_scores_to_dict(logit_custom_score))
+    # logit_chart = imbalanced_performance_summary(logit_custom_score, "logistic")
 
-    wandb.finish()
+    # wandb.finish()
     
-    # wandb.log({"summary_metrics": logit_chart})
+    # # wandb.log({"summary_metrics": logit_chart})
 
-    flipped_lgb_custom_score = get_all_scores(
-        y_test, lgb_Y_pred, lgb_Y_pred_proba[:, 0]
-    )
-    (
-        flipped_lgb_precision,
-        flipped_lgb_recall,
-        flipped_lgb_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), lgb_Y_pred_proba[:, 0])
+    # flipped_logit_custom_score = get_all_scores(
+    #     y_test, logit_Y_pred, logit_Y_pred_proba[:, 0]
+    # )
+    # (
+    #     flipped_logit_precision,
+    #     flipped_logit_recall,
+    #     flipped_logit_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), logit_Y_pred_proba[:, 0])
 
-    # -----------------------------------------------
-    # ------- Process Logistic Model Result ---------
-    # -----------------------------------------------
+    # # -----------------------------------------------
+    # # ------- Process Decision Tree Result ----------
+    # # -----------------------------------------------
 
-    wandb.init(project="thesis", group="logistic")
-    logit_Y_pred = refit_logit.predict(scaled_X_test)
-    logit_Y_pred_proba = refit_logit.predict_proba(scaled_X_test)
-    logit_custom_score = get_all_scores(y_test, logit_Y_pred, logit_Y_pred_proba[:, 1])
-    logit_precision, logit_recall, logit_thresholds = precision_recall_curve(
-        y_test, logit_Y_pred_proba[:, 1]
-    )
+    # wandb.init(project="thesis", group="dt")
+    # dt_Y_pred = refit_dt.predict(scaled_X_test)
+    # dt_Y_pred_proba = refit_dt.predict_proba(scaled_X_test)
+    # dt_custom_score = get_all_scores(y_test, dt_Y_pred, dt_Y_pred_proba[:, 1])
+    # dt_precision, dt_recall, dt_thresholds = precision_recall_curve(
+    #     y_test, dt_Y_pred_proba[:, 1]
+    # )
 
-    wandb.log(convert_scores_to_dict(logit_custom_score))
-    logit_chart = imbalanced_performance_summary(logit_custom_score, "logistic")
+    # wandb.log(convert_scores_to_dict(dt_custom_score))
+    # dt_chart = imbalanced_performance_summary(dt_custom_score, "decision_tree")
 
-    wandb.finish()
+    # wandb.finish()
+
+    # # wandb.log({"summary_metrics": dt_chart})
+
+    # flipped_dt_custom_score = get_all_scores(y_test, dt_Y_pred, dt_Y_pred_proba[:, 0])
+    # (
+    #     flipped_dt_precision,
+    #     flipped_dt_recall,
+    #     flipped_dt_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), dt_Y_pred_proba[:, 0])
+
+    # # -----------------------------------------------
+    # # --------- Process SVC Model Result ------------
+    # # -----------------------------------------------
+
+    # wandb.init(project="thesis", group="svc")
+    # svm_Y_pred = refit_svm.predict(scaled_X_test)
+    # svm_Y_pred_proba = refit_svm.predict_proba(scaled_X_test)
+    # svm_custom_score = get_all_scores(y_test, svm_Y_pred, svm_Y_pred_proba[:, 1])
+    # svm_precision, svm_recall, svm_thresholds = precision_recall_curve(
+    #     y_test, svm_Y_pred_proba[:, 1]
+    # )
+
+    # wandb.log(convert_scores_to_dict(svm_custom_score))
+    # svm_chart = imbalanced_performance_summary(svm_custom_score, "svc")
+
+    # wandb.finish()
+
+    # # wandb.log({"summary_metrics": svm_chart})
+
+    # flipped_svm_custom_score = get_all_scores(
+    #     y_test, svm_Y_pred, svm_Y_pred_proba[:, 0]
+    # )
+    # (
+    #     flipped_svm_precision,
+    #     flipped_svm_recall,
+    #     flipped_svm_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), svm_Y_pred_proba[:, 0])
+
+    # # -----------------------------------------------
+    # # ------- Process Random Forest Result ----------
+    # # -----------------------------------------------
+
+    # wandb.init(project="thesis", group="rf")
+    # rf_Y_pred = refit_rf.predict(scaled_X_test)
+    # rf_Y_pred_proba = refit_rf.predict_proba(scaled_X_test)
+    # rf_custom_score = get_all_scores(y_test, rf_Y_pred, rf_Y_pred_proba[:, 1])
+    # rf_precision, rf_recall, rf_thresholds = precision_recall_curve(
+    #     y_test, rf_Y_pred_proba[:, 1]
+    # )
+
+    # wandb.log(convert_scores_to_dict(rf_custom_score))
+    # rf_chart = imbalanced_performance_summary(rf_custom_score, "svc")
+
+    # wandb.finish()
+
+    # # wandb.log({"summary_metrics": rf_chart})
+
+    # flipped_rf_custom_score = get_all_scores(y_test, rf_Y_pred, rf_Y_pred_proba[:, 0])
+    # (
+    #     flipped_rf_precision,
+    #     flipped_rf_recall,
+    #     flipped_rf_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), rf_Y_pred_proba[:, 0])
+
+    # # -----------------------------------------------
+    # # ------- Process XGBoost Model Result ----------
+    # # -----------------------------------------------
+
+    # wandb.init(project="thesis", group="xgb")
+    # xgb_Y_pred = refit_xgb.predict(scaled_X_test)
+    # xgb_Y_pred_proba = refit_xgb.predict_proba(scaled_X_test)
+    # xgb_custom_score = get_all_scores(y_test, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+    # xgb_precision, xgb_recall, xgb_thresholds = precision_recall_curve(
+    #     y_test, xgb_Y_pred_proba[:, 1]
+    # )
+
+    # wandb.log(convert_scores_to_dict(xgb_custom_score))
+    # xgb_chart = imbalanced_performance_summary(xgb_custom_score, "xgboost")
+
+    # wandb.finish()
+
+    # # wandb.log({"summary_metrics": xgb_chart})
+
+    # flipped_xgb_custom_score = get_all_scores(
+    #     y_test, xgb_Y_pred, xgb_Y_pred_proba[:, 0]
+    # )
+    # (
+    #     flipped_xgb_precision,
+    #     flipped_xgb_recall,
+    #     flipped_xgb_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), xgb_Y_pred_proba[:, 0])
+
+
+    # # -----------------------------------------------
+    # # -------- Process Dummy False Result ------------
+    # # -----------------------------------------------
+
+    # wandb.init(project="thesis", group="dummy_false")
+    # dummy_Y_pred = dummy_false.predict(scaled_X_test)
+    # dummy_Y_pred_proba = dummy_false.predict_proba(scaled_X_test)
+    # dummy_custom_score = get_all_scores(y_test, dummy_Y_pred, dummy_Y_pred_proba[:, 1])
     
-    # wandb.log({"summary_metrics": logit_chart})
+    # wandb.log(convert_scores_to_dict(dummy_custom_score))
+    # logit_chart = imbalanced_performance_summary(dummy_custom_score, "dummy_false")
 
-    flipped_logit_custom_score = get_all_scores(
-        y_test, logit_Y_pred, logit_Y_pred_proba[:, 0]
-    )
-    (
-        flipped_logit_precision,
-        flipped_logit_recall,
-        flipped_logit_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), logit_Y_pred_proba[:, 0])
-
-    # -----------------------------------------------
-    # ------- Process Decision Tree Result ----------
-    # -----------------------------------------------
-
-    wandb.init(project="thesis", group="decision_tree")
-    dt_Y_pred = refit_dt.predict(scaled_X_test)
-    dt_Y_pred_proba = refit_dt.predict_proba(scaled_X_test)
-    dt_custom_score = get_all_scores(y_test, dt_Y_pred, dt_Y_pred_proba[:, 1])
-    dt_precision, dt_recall, dt_thresholds = precision_recall_curve(
-        y_test, dt_Y_pred_proba[:, 1]
-    )
-
-    wandb.log(convert_scores_to_dict(dt_custom_score))
-    dt_chart = imbalanced_performance_summary(dt_custom_score, "decision_tree")
-
-    wandb.finish()
-
-    # wandb.log({"summary_metrics": dt_chart})
-
-    flipped_dt_custom_score = get_all_scores(y_test, dt_Y_pred, dt_Y_pred_proba[:, 0])
-    (
-        flipped_dt_precision,
-        flipped_dt_recall,
-        flipped_dt_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), dt_Y_pred_proba[:, 0])
-
-    # -----------------------------------------------
-    # --------- Process SVC Model Result ------------
-    # -----------------------------------------------
-
-    wandb.init(project="thesis", group="svc")
-    svm_Y_pred = refit_svm.predict(scaled_X_test)
-    svm_Y_pred_proba = refit_svm.predict_proba(scaled_X_test)
-    svm_custom_score = get_all_scores(y_test, svm_Y_pred, svm_Y_pred_proba[:, 1])
-    svm_precision, svm_recall, svm_thresholds = precision_recall_curve(
-        y_test, svm_Y_pred_proba[:, 1]
-    )
-
-    wandb.log(convert_scores_to_dict(svm_custom_score))
-    svm_chart = imbalanced_performance_summary(svm_custom_score, "svc")
-
-    wandb.finish()
-
-    # wandb.log({"summary_metrics": svm_chart})
-
-    flipped_svm_custom_score = get_all_scores(
-        y_test, svm_Y_pred, svm_Y_pred_proba[:, 0]
-    )
-    (
-        flipped_svm_precision,
-        flipped_svm_recall,
-        flipped_svm_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), svm_Y_pred_proba[:, 0])
-
-    # -----------------------------------------------
-    # ------- Process Random Forest Result ----------
-    # -----------------------------------------------
-
-    wandb.init(project="thesis", group="random_forest")
-    rf_Y_pred = refit_rf.predict(scaled_X_test)
-    rf_Y_pred_proba = refit_rf.predict_proba(scaled_X_test)
-    rf_custom_score = get_all_scores(y_test, rf_Y_pred, rf_Y_pred_proba[:, 1])
-    rf_precision, rf_recall, rf_thresholds = precision_recall_curve(
-        y_test, rf_Y_pred_proba[:, 1]
-    )
-
-    wandb.log(convert_scores_to_dict(rf_custom_score))
-    rf_chart = imbalanced_performance_summary(rf_custom_score, "svc")
-
-    wandb.finish()
-
-    # wandb.log({"summary_metrics": rf_chart})
-
-    flipped_rf_custom_score = get_all_scores(y_test, rf_Y_pred, rf_Y_pred_proba[:, 0])
-    (
-        flipped_rf_precision,
-        flipped_rf_recall,
-        flipped_rf_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), rf_Y_pred_proba[:, 0])
-
-    # -----------------------------------------------
-    # ------- Process XGBoost Model Result ----------
-    # -----------------------------------------------
-
-    wandb.init(project="thesis", group="xgboost")
-    xgb_Y_pred = refit_xgb.predict(scaled_X_test)
-    xgb_Y_pred_proba = refit_xgb.predict_proba(scaled_X_test)
-    xgb_custom_score = get_all_scores(y_test, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
-    xgb_precision, xgb_recall, xgb_thresholds = precision_recall_curve(
-        y_test, xgb_Y_pred_proba[:, 1]
-    )
-
-    wandb.log(convert_scores_to_dict(xgb_custom_score))
-    xgb_chart = imbalanced_performance_summary(xgb_custom_score, "xgboost")
-
-    wandb.finish()
-
-    # wandb.log({"summary_metrics": xgb_chart})
-
-    flipped_xgb_custom_score = get_all_scores(
-        y_test, xgb_Y_pred, xgb_Y_pred_proba[:, 0]
-    )
-    (
-        flipped_xgb_precision,
-        flipped_xgb_recall,
-        flipped_xgb_thresholds,
-    ) = precision_recall_curve(flip_true_false(y_test), xgb_Y_pred_proba[:, 0])
-
-
-    # -----------------------------------------------
-    # -------- Process Dummy False Result ------------
-    # -----------------------------------------------
-
-    wandb.init(project="thesis", group="dummy_false")
-    dummy_Y_pred = dummy_false.predict(scaled_X_test)
-    dummy_Y_pred_proba = dummy_false.predict_proba(scaled_X_test)
-    dummy_custom_score = get_all_scores(y_test, dummy_Y_pred, dummy_Y_pred_proba[:, 1])
-    
-    wandb.log(convert_scores_to_dict(dummy_custom_score))
-    logit_chart = imbalanced_performance_summary(dummy_custom_score, "dummy_false")
-
-    wandb.finish()
+    # wandb.finish()
     
 
 
-    # -----------------------------------------------
-    # -------- Process LGBM Model Result ------------
-    # -----------------------------------------------
+    # # -----------------------------------------------
+    # # -------- Process LGBM Model Result ------------
+    # # -----------------------------------------------
     
-    # -----------------------------------------------
-    # -------- Plot PR and Flipped PR Curve ---------
-    # -----------------------------------------------
-
-    # PR Curve
-
-    # create precision recall curve
-
-    no_skill = len(y_test[y_test==1]) / len(y_test)
-
-    fig, ax = plt.subplots()
     
-    ax.plot(logit_precision, logit_recall, color="black", label="logistic")
-    ax.plot(dt_precision, dt_recall, color="blue", label="decision_tree")
-    ax.plot(svm_precision, svm_recall, color="green", label="svc")
-    ax.plot(rf_precision, rf_recall, color="red", label="random_forest")
-    ax.plot(xgb_precision, xgb_recall, color="yellow", label="xgboost")
-    ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
+    # wandb.init(project="thesis", group="lgb")
+    # lgb_Y_pred = refit_lgb.predict(scaled_X_test)
+    # lgb_Y_pred_proba = refit_lgb.predict_proba(scaled_X_test)
+    # lgb_custom_score = get_all_scores(y_test, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
+    # lgb_precision, lgb_recall, lgb_thresholds = precision_recall_curve(
+    #     y_test, lgb_Y_pred_proba[:, 1]
+    # )
+
+    # wandb.log(convert_scores_to_dict(lgb_custom_score))
+    # lgb_chart = imbalanced_performance_summary(lgb_custom_score, "lgb")
+
+    # wandb.finish()
     
-    # add axis labels to plot
-    ax.set_title("Precision-Recall Curve")
-    ax.set_ylabel("Precision")
-    ax.set_xlabel("Recall")
+    # # wandb.log({"summary_metrics": logit_chart})
 
-    wandb.log({"PRC": fig})
-    # display plot
+    # flipped_lgb_custom_score = get_all_scores(
+    #     y_test, lgb_Y_pred, lgb_Y_pred_proba[:, 0]
+    # )
+    # (
+    #     flipped_lgb_precision,
+    #     flipped_lgb_recall,
+    #     flipped_lgb_thresholds,
+    # ) = precision_recall_curve(flip_true_false(y_test), lgb_Y_pred_proba[:, 0])
+    
+    # # -----------------------------------------------
+    # # -------- Plot PR and Flipped PR Curve ---------
+    # # -----------------------------------------------
 
-    fig, ax = plt.subplots()
+    # # PR Curve
 
-    no_skill = len(y_test[y_test==0]) / len(y_test)
-    ax.plot(
-        flipped_logit_precision, flipped_logit_recall, color="black", label="logistic"
-    )
-    ax.plot(
-        flipped_dt_precision, flipped_dt_recall, color="blue", label="decision_tree"
-    )
-    ax.plot(flipped_svm_precision, flipped_svm_recall, color="green", label="svc")
-    ax.plot(flipped_rf_precision, flipped_rf_recall, color="red", label="random_forest")
-    ax.plot(flipped_xgb_precision, flipped_xgb_recall, color="yellow", label="xgboost")
-    ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
+    # # create precision recall curve
 
-    # add axis labels to plot
-    ax.set_title("Precision-Recall Curve for Positive Class")
-    ax.set_ylabel("Precision")
-    ax.set_xlabel("Recall")
+    # no_skill = len(y_test[y_test==1]) / len(y_test)
 
-    wandb.log({"PRC-Positive": fig})
+    # fig, ax = plt.subplots()
+    
+    # ax.plot(logit_precision, logit_recall, color="black", label="logistic")
+    # ax.plot(dt_precision, dt_recall, color="blue", label="decision_tree")
+    # ax.plot(svm_precision, svm_recall, color="green", label="svc")
+    # ax.plot(rf_precision, rf_recall, color="red", label="random_forest")
+    # ax.plot(xgb_precision, xgb_recall, color="yellow", label="xgboost")
+    # ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
+    
+    # # add axis labels to plot
+    # ax.set_title("Precision-Recall Curve")
+    # ax.set_ylabel("Precision")
+    # ax.set_xlabel("Recall")
 
-    # # plt.savefig('PR-test.jpeg')
+    # wandb.log({"PRC": fig})
+    # # display plot
 
-    # img_buf = io.BytesIO()
-    # plt.savefig(img_buf, format='png')
+    # fig, ax = plt.subplots()
 
-    # im = Image.open(img_buf)
-    # # im.show(title="My Image")
-    # wandb.log({"example-2": wandb.Image(im)})
-    # img_buf.close()
+    # no_skill = len(y_test[y_test==0]) / len(y_test)
+    # ax.plot(
+    #     flipped_logit_precision, flipped_logit_recall, color="black", label="logistic"
+    # )
+    # ax.plot(
+    #     flipped_dt_precision, flipped_dt_recall, color="blue", label="decision_tree"
+    # )
+    # ax.plot(flipped_svm_precision, flipped_svm_recall, color="green", label="svc")
+    # ax.plot(flipped_rf_precision, flipped_rf_recall, color="red", label="random_forest")
+    # ax.plot(flipped_xgb_precision, flipped_xgb_recall, color="yellow", label="xgboost")
+    # ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='no skill')
 
-    # -----------------------------------------------
-    # ------ Store All Result as Wandb Table --------
-    # -----------------------------------------------
+    # # add axis labels to plot
+    # ax.set_title("Precision-Recall Curve for Positive Class")
+    # ax.set_ylabel("Precision")
+    # ax.set_xlabel("Recall")
 
-    df = pd.concat(
-        [
-            pd.DataFrame(
-                convert_scores_to_dict(logit_custom_score),
-                index=["logit"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(flipped_logit_custom_score),
-                index=["logit-pos"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(dt_custom_score),
-                index=["dt"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(flipped_dt_custom_score),
-                index=["dt-post"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(svm_custom_score),
-                index=["svm"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(flipped_svm_custom_score),
-                index=["svm-post"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(rf_custom_score),
-                index=["rf"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(flipped_rf_custom_score),
-                index=["rf-pos"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(xgb_custom_score),
-                index=["xgb"],
-            ),
-            pd.DataFrame(
-                convert_scores_to_dict(flipped_xgb_custom_score),
-                index=["xgb-pos"],
-            )
-        ]
-    )
+    # wandb.log({"PRC-Positive": fig})
 
-    result_table = wandb.Table(dataframe=df)
-    result_table_artifact = wandb.Artifact("result_artifact", type="dataset")
-    result_table_artifact.add(result_table, "iris_table")
-    result_table_artifact.add_file(df.to_csv("./result.csv"))
+    # # # plt.savefig('PR-test.jpeg')
+
+    # # img_buf = io.BytesIO()
+    # # plt.savefig(img_buf, format='png')
+
+    # # im = Image.open(img_buf)
+    # # # im.show(title="My Image")
+    # # wandb.log({"example-2": wandb.Image(im)})
+    # # img_buf.close()
+
+    # # -----------------------------------------------
+    # # ------ Store All Result as Wandb Table --------
+    # # -----------------------------------------------
+
+    # df = pd.concat(
+    #     [
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(logit_custom_score),
+    #             index=["logit"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(flipped_logit_custom_score),
+    #             index=["logit-pos"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(dt_custom_score),
+    #             index=["dt"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(flipped_dt_custom_score),
+    #             index=["dt-post"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(svm_custom_score),
+    #             index=["svm"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(flipped_svm_custom_score),
+    #             index=["svm-post"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(rf_custom_score),
+    #             index=["rf"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(flipped_rf_custom_score),
+    #             index=["rf-pos"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(xgb_custom_score),
+    #             index=["xgb"],
+    #         ),
+    #         pd.DataFrame(
+    #             convert_scores_to_dict(flipped_xgb_custom_score),
+    #             index=["xgb-pos"],
+    #         )
+    #     ]
+    # )
+
+    # result_table = wandb.Table(dataframe=df)
+    # result_table_artifact = wandb.Artifact("result_artifact", type="dataset")
+    # result_table_artifact.add(result_table, "iris_table")
+    # result_table_artifact.add_file(df.to_csv("./result.csv"))
 
 if __name__ == "__main__":
     work()
