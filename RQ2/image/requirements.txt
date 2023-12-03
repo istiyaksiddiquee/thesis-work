@@ -4,8 +4,7 @@ numpy
 chardet
 xgboost
 imbalanced-learn
-ray[tune,default, train]
 matplotlib
-mlflow
-flytekitplugins-ray
+flytekit
 lightgbm
+wandb
