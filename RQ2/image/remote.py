@@ -29,18 +29,16 @@ if __name__ == "__main__":
     )
 
     from script import work
-    from simple import my_wf
 
-    # wf = remote.register_script(
-    #     entity=work,
-    #     # entity=my_wf,
-    #     image_config=ImageConfig.from_images("istiyaksiddiquee/flyte-for-kube:1.0.0"),
-    #     source_path="./",
-    #     module_name="script",
-    #     project="fakeray",
-    #     domain="staging",
-    #     version="v1",
-    # )
+    wf = remote.register_script(
+        entity=work,
+        image_config=ImageConfig.from_images("istiyaksiddiquee/flyte-for-kube:1.0.0"),
+        source_path="./",
+        module_name="script",
+        project="fakeray",
+        domain="staging",
+        version="v1",
+    )
 
     lp = remote.fetch_launch_plan(project="fakeray", domain="staging", name="script.work")
     print(lp.id.version)

@@ -4,12 +4,15 @@ python3 -m pip install ansible
 sudo apt install ansible
 ansible --version
 ssh-keygen
-ssh-copy-id siddiquee@192.168.0.105
+ssh-copy-id siddiquee@192.168.0.103
 sudo apt-get update
 sudo apt-get install python
 
-ansible -i inventory all -m ping
-ansible-playbook -i inventory install.yaml --ask-become-pass
+ansible -i geekom all -m ping
+ansible-playbook -i geekom install.yaml --ask-become-pass
+
+wget https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz
 
 helm repo add flyteorg https://flyteorg.github.io/flyte
-helm install -n flyte -f starter.yaml --create-namespace flyte flyteorg/flyte-sandbox
+helm repo update
+helm install -n flyte -f starter.yaml --create-namespace flyte flyteorg/flyte-sandbox --create-namespace

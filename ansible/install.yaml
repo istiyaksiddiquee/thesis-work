@@ -136,7 +136,14 @@
       add_host:
         name: "DUMMY_HOST"
         JOIN_COMMAND: "{{ kubernetes_join_command.stdout_lines[0] }}"
-
+    - name: Download Helm for Kubernetes
+      command: wget https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz & tar -zxvf helm-v3.13.2-linux-amd64.tar.gz 
+    - name: move helm to path
+      command: sudo mv linux-amd64/helm /usr/local/bin/helm 
+      become: yes
+      become_user: siddiquee
+    - name: helm cleanup
+      command: rm /home/siddiquee/helm-v3.13.2-linux-amd64.tar.gz & rm -rf linux-amd64
 # Ansible playbook to join the worker nodes to the cluster
 - hosts: worker
   become: yes # Run as root
