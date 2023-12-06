@@ -734,7 +734,6 @@ def flip_true_false(y):
 
 @workflow
 def work():
-    next_val = 16
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"]="istiyaksiddiquee"
@@ -760,7 +759,7 @@ def work():
 
     # call the nested loop to get all the trained models
     print(X_train_val.shape, X_test.shape, y_train_val.shape, y_test.shape)
-    refit_dt, refit_svm, refit_rf, refit_logit, refit_xgb, refit_lgb, dummy_false = nested_loop(
+    nested_loop(
         X_train_val=X_train_val, y_train_val=y_train_val
     )
 

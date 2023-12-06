@@ -5,6 +5,6 @@ chardet
 xgboost
 imbalanced-learn
 matplotlib
-flytekit
 lightgbm
 wandb
+flytekit

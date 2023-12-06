@@ -9,7 +9,6 @@ from flytekit.configuration import (
 
 if __name__ == "__main__":
 
-    print('here')
     remote = FlyteRemote(
         config=Config(
             platform=PlatformConfig(
@@ -32,9 +31,9 @@ if __name__ == "__main__":
     from script import work
 
     wf = remote.register_script(
-        work,
+        entity=work,
         image_config=ImageConfig.from_images("istiyaksiddiquee/flyte-for-kube:1.0.0"),
-        source_path="../",
+        source_path="./",
         module_name="script",
         project="fakeray",
         domain="staging",
@@ -48,7 +47,7 @@ if __name__ == "__main__":
     execution = remote.execute(
         lp,
         inputs={},
-        execution_name="workflow-execution-5",
+        execution_name="workflow-execution-1",
         project="fakeray",
         domain="staging",
         version="v1",
