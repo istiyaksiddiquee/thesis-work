@@ -37,7 +37,7 @@ if __name__ == "__main__":
         module_name="script",
         project="fakeray",
         domain="staging",
-        version="v1",
+        version="v4",
     )
 
     lp = remote.fetch_launch_plan(project="fakeray", domain="staging", name="script.work")
@@ -47,10 +47,10 @@ if __name__ == "__main__":
     execution = remote.execute(
         lp,
         inputs={},
-        execution_name="workflow-execution-1",
+        execution_name="workflow-execution-4",
         project="fakeray",
         domain="staging",
-        version="v1",
+        version="v4",
         wait=True,
         image_config="istiyaksiddiquee/flyte-for-kube:1.0.0",
     )

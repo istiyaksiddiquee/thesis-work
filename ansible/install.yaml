@@ -138,7 +138,7 @@
         JOIN_COMMAND: "{{ kubernetes_join_command.stdout_lines[0] }}"
     
     - name: Download Helm for Kubernetes
-      command: wget https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz 
+      command: wget -q -o /dev/null https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz 
     
     - name: untar 
       command: tar -zxvf helm-v3.13.2-linux-amd64.tar.gz
@@ -150,6 +150,19 @@
     
     - name: helm cleanup
       command: rm helm-v3.13.2-linux-amd64.tar.gz & rm -rf linux-amd64
+
+    - name: download flytectl
+      command: curl -sL https://ctl.flyte.org/install | bash
+    
+    - name: move flytectl to lib
+      command: sudo mv ./bin/flytectl /usr/local/bin
+      become: yes
+      become_user: siddiquee
+    
+    - name: delete bin folder
+      commad: sudo rm -rf bin
+      become: yes
+      become_user: siddiquee
       
 # Ansible playbook to join the worker nodes to the cluster
 - hosts: worker
