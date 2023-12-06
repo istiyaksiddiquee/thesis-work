@@ -210,7 +210,7 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:2.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
     outer_cv = RepeatedKFold(n_splits=5, n_repeats=1)
@@ -577,7 +577,7 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:2.0.0")
 def model_fitting_loop_with_grid_search(
     model, x_train_df, y_train_df, inner_cv, grid_param, model_name
 ):
@@ -601,7 +601,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:2.0.0")
 def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     # Logistic Regression
@@ -746,17 +746,17 @@ def work():
 
     X_train_val, X_test, y_train_val, y_test = filter_and_split_df(df)
 
-    with open("./x_train_val.pickle", "wb") as file:
-        pickle.dump(X_train_val, file)
+    # with open("./x_train_val.pickle", "wb") as file:
+    #     pickle.dump(X_train_val, file)
     
-    with open("./y_train_val.pickle", "wb") as file:
-        pickle.dump(y_train_val, file)
+    # with open("./y_train_val.pickle", "wb") as file:
+    #     pickle.dump(y_train_val, file)
     
-    with open("./x_test.pickle", "wb") as file:
-        pickle.dump(X_test, file)
+    # with open("./x_test.pickle", "wb") as file:
+    #     pickle.dump(X_test, file)
     
-    with open("./y_test.pickle", "wb") as file:
-        pickle.dump(y_test, file)        
+    # with open("./y_test.pickle", "wb") as file:
+    #     pickle.dump(y_test, file)        
 
     # call the nested loop to get all the trained models
     print(X_train_val.shape, X_test.shape, y_train_val.shape, y_test.shape)

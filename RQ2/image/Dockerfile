@@ -1,6 +1,7 @@
 FROM python:3.10-slim-buster
 
 WORKDIR /work
+USER root 
 
 ARG VERSION
 ARG DOCKER_IMAGE
@@ -20,8 +21,5 @@ COPY ./script.py .
 COPY ./rq2_vosoughi_False_features.csv .
 COPY ./rq2_vosoughi_True_features.csv .
 
-RUN useradd -u 1000 flytekit
-RUN chown flytekit: /root
-USER flytekit
 
 # ENV FLYTE_INTERNAL_IMAGE "$DOCKER_IMAGE" 
