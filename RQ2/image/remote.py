@@ -32,12 +32,12 @@ if __name__ == "__main__":
 
     wf = remote.register_script(
         entity=work,
-        image_config=ImageConfig.from_images("istiyaksiddiquee/flyte-for-kube:1.0.0"),
+        image_config=ImageConfig.from_images("istiyaksiddiquee/flyte-for-kube:3.0.0"),
         source_path="./",
         module_name="script",
         project="fakeray",
         domain="staging",
-        version="v4",
+        version="v1",
     )
 
     lp = remote.fetch_launch_plan(project="fakeray", domain="staging", name="script.work")
@@ -47,10 +47,10 @@ if __name__ == "__main__":
     execution = remote.execute(
         lp,
         inputs={},
-        execution_name="workflow-execution-4",
+        execution_name="workflow-execution-1",
         project="fakeray",
         domain="staging",
-        version="v4",
+        version="v1",
         wait=True,
-        image_config="istiyaksiddiquee/flyte-for-kube:1.0.0",
+        image_config="istiyaksiddiquee/flyte-for-kube:3.0.0",
     )

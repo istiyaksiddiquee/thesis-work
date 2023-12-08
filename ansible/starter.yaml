@@ -51,8 +51,8 @@ flyte-binary:
     inlineConfigMap: '{{ include "flyte-sandbox.clusterResourceTemplates.inlineConfigMap" . }}'
   deployment:
     image:
-      repository: cr.flyte.org/flyteorg/flyte-binary 
-      tag: latest
+      repository: cr.flyte.org/flyteorg/flyte-binary
+      tag: v1.10.2
       pullPolicy: IfNotPresent
     waitForDB:
       image:
