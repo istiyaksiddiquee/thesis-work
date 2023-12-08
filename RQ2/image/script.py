@@ -1,5 +1,4 @@
 import os
-import argparse
 import chardet
 import pandas as pd
 from sklearn.metrics import (
@@ -17,7 +16,6 @@ import xgboost as xgb
 from sklearn.svm import SVC
 import matplotlib.pyplot as plt
 from imblearn.combine import SMOTETomek
-from imblearn.pipeline import make_pipeline
 from imblearn.under_sampling import TomekLinks
 from imblearn.over_sampling import SMOTE
 from sklearn.tree import DecisionTreeClassifier
@@ -28,10 +26,7 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_spli
 from sklearn.dummy import DummyClassifier
 from copy import copy
 import numpy as np
-import pickle
-from flytekit import task, workflow, dynamic, ImageSpec, Resources
-from flytekit.remote import FlyteRemote
-from flytekit.configuration import Config, PlatformConfig
+# from flytekit import task, workflow, dynamic, ImageSpec
 import wandb
 import joblib
 import lightgbm as lgb
@@ -39,18 +34,18 @@ import lightgbm as lgb
 random_state = 7
 no_of_active_features = 15
 
-custom_image = ImageSpec(
-    python_version="3.10",
-    packages=[
-        "scikit-learn",
-        "pandas",
-        "numpy",
-        "chardet",
-        "xgboost",
-        "imbalanced-learn",
-    ],
-    base_image="python:3.10-slim-buster",
-)
+# custom_image = ImageSpec(
+#     python_version="3.10",
+#     packages=[
+#         "scikit-learn",
+#         "pandas",
+#         "numpy",
+#         "chardet",
+#         "xgboost",
+#         "imbalanced-learn",
+#     ],
+#     base_image="python:3.10-slim-buster",
+# )
 
 scorers_for_gridcv = {
     "accuracy_score": make_scorer(accuracy_score),
@@ -210,10 +205,10 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+# @task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
-    outer_cv = RepeatedKFold(n_splits=5, n_repeats=1)
+    outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
 
     dt_epoch_id = -1
     rf_epoch_id = -1
@@ -287,8 +282,8 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
             project="thesis", group="logit", job_type=epoch_str
         )
 
-        logit_Y_pred = logit_model.best_estimator_.predict(X_val)
-        logit_Y_pred_proba = logit_model.best_estimator_.predict_proba(X_val)
+        logit_Y_pred = logit_model.predict(X_val)
+        logit_Y_pred_proba = logit_model.predict_proba(X_val)
         logit_custom_score = get_all_scores(
             Y_val, logit_Y_pred, logit_Y_pred_proba[:, 1]
         )
@@ -298,7 +293,9 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         logit_cv_result_table = wandb.Table(dataframe=logit_cv_result_df)
         logit_cv_result_artifact = wandb.Artifact("logit_cv_result_artifact_"+epoch_str, type="dataset")
         logit_cv_result_artifact.add(logit_cv_result_table, "logit_cv_result_table_"+epoch_str)
-        logit_cv_result_artifact.add_file(logit_cv_result_df.to_csv(f"./logit_cv_result_{epoch_str}.csv"))
+        logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
+        logit_cv_result_df.to_csv(logit_cv_file_name)
+        logit_cv_result_artifact.add_file(logit_cv_file_name)
         
         wandb.finish()
 
@@ -307,28 +304,32 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         )
         dt_Y_pred = dt_model.predict(X_val)
         dt_Y_pred_proba = dt_model.predict_proba(X_val)
-        dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba)
+        dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba[:, 1])
         wandb.log(convert_scores_to_dict(dt_custom_score))
         
         dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
         dt_cv_result_table = wandb.Table(dataframe=dt_cv_result_df)
         dt_cv_result_artifact = wandb.Artifact("dt_cv_result_artifact_" + epoch_str, type="dataset")
         dt_cv_result_artifact.add(dt_cv_result_table, "dt_cv_result_table_" + epoch_str)
-        dt_cv_result_artifact.add_file(dt_cv_result_df.to_csv(f"./dt_cv_result_{epoch_str}.csv"))
+        dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
+        dt_cv_result_df.to_csv(dt_cv_file_name)
+        dt_cv_result_artifact.add_file(dt_cv_file_name)
         
         wandb.finish()
 
         wandb.init(project="thesis", group="svc", job_type="epoch_" + str(loop_index))
         svc_Y_pred = svc_model.predict(X_val)
         svc_Y_pred_proba = svc_model.predict_proba(X_val)
-        svc_custom_score = get_all_scores(Y_val, svc_Y_pred, svc_Y_pred_proba)
+        svc_custom_score = get_all_scores(Y_val, svc_Y_pred, svc_Y_pred_proba[:, 1])
         wandb.log(convert_scores_to_dict(svc_custom_score))
         
         svc_cv_result_df = pd.DataFrame(svc_result.cv_results_)
         svc_cv_result_table = wandb.Table(dataframe=svc_cv_result_df)
         svc_cv_result_artifact = wandb.Artifact("svc_cv_result_artifact_" + epoch_str, type="dataset")
         svc_cv_result_artifact.add(svc_cv_result_table, "svc_cv_result_table_" + epoch_str)
-        svc_cv_result_artifact.add_file(svc_cv_result_df.to_csv(f"./svc_cv_result_{epoch_str}.csv"))
+        svc_cv_file_name = f"./svc_cv_result_{epoch_str}.csv"
+        svc_cv_result_df.to_csv(svc_cv_file_name)
+        svc_cv_result_artifact.add_file(svc_cv_file_name)
         
         wandb.finish()
 
@@ -337,14 +338,16 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         )
         rf_Y_pred = rf_model.predict(X_val)
         rf_Y_pred_proba = rf_model.predict_proba(X_val)
-        rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba)
+        rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba[:, 1])
         wandb.log(convert_scores_to_dict(rf_custom_score))
         
         rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
         rf_cv_result_table = wandb.Table(dataframe=rf_cv_result_df)
         rf_cv_result_artifact = wandb.Artifact("rf_cv_result_artifact_" + epoch_str, type="dataset")
         rf_cv_result_artifact.add(rf_cv_result_table, "rf_cv_result_table_" + epoch_str)
-        rf_cv_result_artifact.add_file(rf_cv_result_df.to_csv(f"./rf_cv_result_{epoch_str}.csv"))
+        rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
+        rf_cv_result_df.to_csv(rf_cv_file_name)
+        rf_cv_result_artifact.add_file(rf_cv_file_name)
         
         wandb.finish()
 
@@ -353,14 +356,16 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         )
         xgb_Y_pred = xgb_model.predict(X_val)
         xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
-        xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba)
+        xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
         wandb.log(convert_scores_to_dict(xgb_custom_score))
         
         xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
         xgb_cv_result_table = wandb.Table(dataframe=xgb_cv_result_df)
         xgb_cv_result_artifact = wandb.Artifact("xgb_cv_result_artifact_" + epoch_str, type="dataset")
         xgb_cv_result_artifact.add(xgb_cv_result_table, "xgb_cv_result_table_" + epoch_str)
-        xgb_cv_result_artifact.add_file(xgb_cv_result_df.to_csv(f"./xgb_cv_result_{epoch_str}.csv"))
+        xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
+        xgb_cv_result_df.to_csv(xgb_cv_file_name)
+        xgb_cv_result_artifact.add_file(xgb_cv_file_name)
         
         wandb.finish()
 
@@ -368,8 +373,8 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
             project="thesis", group="lgb", job_type=epoch_str
         )
 
-        lgb_Y_pred = lgb_model.best_estimator_.predict(X_val)
-        lgb_Y_pred_proba = lgb_model.best_estimator_.predict_proba(X_val)
+        lgb_Y_pred = lgb_model.predict(X_val)
+        lgb_Y_pred_proba = lgb_model.predict_proba(X_val)
         lgb_custom_score = get_all_scores(
             Y_val, lgb_Y_pred, lgb_Y_pred_proba[:, 1]
         )
@@ -379,7 +384,9 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         lgb_cv_result_table = wandb.Table(dataframe=lgb_cv_result_df)
         lgb_cv_result_artifact = wandb.Artifact("lgb_cv_result_artifact_"+epoch_str, type="dataset")
         lgb_cv_result_artifact.add(lgb_cv_result_table, "lgb_cv_result_table_"+epoch_str)
-        lgb_cv_result_artifact.add_file(lgb_cv_result_df.to_csv(f"./lgb_cv_result_{epoch_str}.csv"))
+        lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
+        lgb_cv_result_df.to_csv(lgb_cv_file_name)
+        lgb_cv_result_artifact.add_file(lgb_cv_file_name)
         
         wandb.finish()
     
@@ -433,33 +440,26 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
         scaled_resampled_y_train_val,
     ) = smotetomek.fit_resample(scaled_X_train_val, y_train_val)
 
-    dt = DecisionTreeClassifier(
-        **trained_dt_model.best_params_, random_state=random_state
-    )
+    dt = DecisionTreeClassifier(**trained_dt_model.get_params())
     refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-    svm = SVC(**trained_svc_model.best_params_, random_state=random_state)
+    svm = LogisticRegression(**trained_svc_model.get_params())
     refit_svm = svm.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-    rf = RandomForestClassifier(
-        **trained_rf_model.best_params_, random_state=random_state
-    )
+    rf = RandomForestClassifier(**trained_rf_model.get_params())
     refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-    logistic = LogisticRegression(
-        **trained_logit_model.best_params_, random_state=random_state
-    )
-    
+    logistic = LogisticRegression(**trained_logit_model.get_params())    
     refit_logit = logistic.fit(
         scaled_resampled_X_train_val, scaled_resampled_y_train_val
     )
 
     xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
-    xgboost = xgboost.set_params(**trained_xgb_model)
+    xgboost = xgboost.set_params(**trained_xgb_model.get_xgb_params())
     refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
     lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
-    lgb_model = lgb_model.set_params(**trained_lgb_model)
+    lgb_model = lgb_model.set_params(**trained_lgb_model.get_params())
     refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
     
     dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
@@ -468,10 +468,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="logit", job_type="final")
     joblib.dump(refit_logit, "logit.joblib")
     logit_artifact = wandb.Artifact(
-        "Logistic Model",
+        "Logistic-Model",
         type="model",
         description="selected Logistic model",
-        metadata={"parameters": trained_logit_model.best_params_, "epoch": logit_epoch_id},
+        metadata={"parameters": trained_logit_model.get_params(), "epoch": logit_epoch_id},
     )
     
     logit_artifact.add_file('logit.joblib')
@@ -482,10 +482,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="rf", job_type="final")
     joblib.dump(refit_rf, "rf.joblib")
     rf_artifact = wandb.Artifact(
-        "RF Model",
+        "RF-Model",
         type="model",
         description="selected RF model",
-        metadata={"parameters": trained_rf_model.best_params_, "epoch": rf_epoch_id},
+        metadata={"parameters": trained_rf_model.get_params(), "epoch": rf_epoch_id},
     )
     
     rf_artifact.add_file('rf.joblib')
@@ -496,10 +496,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="svc", job_type="final")
     joblib.dump(refit_svm, "svc.joblib")
     svc_artifact = wandb.Artifact(
-        "SVC Model",
+        "SVC-Model",
         type="model",
         description="selected SVC model",
-        metadata={"parameters": trained_svc_model.best_params_, "epoch": svc_epoch_id},
+        metadata={"parameters": trained_svc_model.get_params(), "epoch": svc_epoch_id},
     )
     
     svc_artifact.add_file('svc.joblib')
@@ -510,10 +510,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="dt", job_type="final")
     joblib.dump(refit_dt, "dt.joblib")
     dt_artifact = wandb.Artifact(
-        "DT Model",
+        "DT-Model",
         type="model",
         description="selected DT model",
-        metadata={"parameters": trained_dt_model.best_params_, "epoch": dt_epoch_id},
+        metadata={"parameters": trained_dt_model.get_params(), "epoch": dt_epoch_id},
     )
     
     dt_artifact.add_file('dt.joblib')
@@ -524,10 +524,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="xgb", job_type="final")
     joblib.dump(refit_xgb, "xgb.joblib")
     xgb_artifact = wandb.Artifact(
-        "XGB Model",
+        "XGB-Model",
         type="model",
         description="selected XGB model",
-        metadata={"parameters": trained_xgb_model.best_params_, "epoch": xgb_epoch_id},
+        metadata={"parameters": trained_xgb_model.get_params(), "epoch": xgb_epoch_id},
     )
     
     xgb_artifact.add_file('xgb.joblib')
@@ -538,10 +538,10 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
     wandb.init(project="thesis", group="lgb", job_type="final")
     joblib.dump(refit_lgb, "lgb.joblib")
     lgb_artifact = wandb.Artifact(
-        "LGB Model",
+        "LGB-Model",
         type="model",
         description="selected LGB model",
-        metadata={"parameters": trained_lgb_model.best_params_, "epoch": lgb_epoch_id},
+        metadata={"parameters": trained_lgb_model.get_params(), "epoch": lgb_epoch_id},
     )
     
     lgb_artifact.add_file('lgb.joblib')
@@ -577,17 +577,20 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+# @task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def model_fitting_loop_with_grid_search(
     model, x_train_df, y_train_df, inner_cv, grid_param, model_name
 ):
+    
+    print(f"fitting {model_name} model... ")
+    
     clf = GridSearchCV(
         estimator=model,
         cv=inner_cv,
         refit="average_precision_score",
         param_grid=grid_param,
         scoring=scorers_for_gridcv,
-        verbose=3,
+        # verbose=1,
         n_jobs=-1,
     )
 
@@ -601,7 +604,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+# @dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
 def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     # Logistic Regression
@@ -615,7 +618,7 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
     # }
 
     logit_grid = {
-        "penalty": ["l1"],
+        "penalty": ["l2"],
     }
     
     dt_grid = {
@@ -650,7 +653,7 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     dt_clf = DecisionTreeClassifier(random_state=random_state)
     dt_result = model_fitting_loop_with_grid_search(
-        model=dt_clf, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, param_grid=dt_grid, model_name="Decision Tree"
+        model=dt_clf, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, grid_param=dt_grid, model_name="Decision Tree"
     )
 
     # # SVC
@@ -663,9 +666,9 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
     #     "shrinking": [True, False],
     #     "coef0": [0.0, 0.1, 0.01, 0.5, 1],
     # }
-    svc_model = SVC()
+    svc_model = LogisticRegression()
     svc_result = model_fitting_loop_with_grid_search(
-        model=svc_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, param_grid=svc_grid, model_name="Support Vector Machine"
+        model=svc_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, grid_param=logit_grid, model_name="Support Vector Machine"
     )
 
     # # Random Forest
@@ -679,7 +682,7 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     rf_model = RandomForestClassifier()
     rf_result = model_fitting_loop_with_grid_search(
-        model=rf_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, param_grid=rf_grid, model_name="Random Forest"
+        model=rf_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, grid_param=rf_grid, model_name="Random Forest"
     )
 
     # # XGBoost
@@ -698,7 +701,7 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
         objective="binary:hinge", nthread=4, seed=random_state
     )
     xgb_result = model_fitting_loop_with_grid_search(
-        model=xgb_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, param_grid=xgb_grid, model_name="XGBoost"
+        model=xgb_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, grid_param=xgb_grid, model_name="XGBoost"
     )
 
     lgb_grid = {
@@ -706,7 +709,7 @@ def fit_multiple_models(x_train_df, y_train_df, inner_cv):
     }
     lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
     lgb_result = model_fitting_loop_with_grid_search(
-        model=lgb_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, param_grid=lgb_grid, model_name="LightGBM"
+        model=lgb_model, x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv, grid_param=lgb_grid, model_name="LightGBM"
     )
 
     # log the following param for every model
@@ -732,7 +735,7 @@ def flip_true_false(y):
     return flipped_y
 
 
-@workflow
+# @workflow
 def work():
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"

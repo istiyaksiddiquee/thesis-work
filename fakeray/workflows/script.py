@@ -206,11 +206,11 @@ def filter_and_split_df(df: pd.DataFrame):
     X_train_val, X_test, y_train_val, y_test = train_test_split(
         X, Y, test_size=test_size, random_state=random_state
     )
-
+do
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
     outer_cv = RepeatedKFold(n_splits=5, n_repeats=1)
@@ -577,7 +577,7 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def model_fitting_loop_with_grid_search(
     model, x_train_df, y_train_df, inner_cv, grid_param, model_name
 ):
@@ -601,7 +601,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def fit_multiple_models(x_train_df, y_train_df, inner_cv):
 
     # Logistic Regression
