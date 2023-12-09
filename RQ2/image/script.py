@@ -26,10 +26,12 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_spli
 from sklearn.dummy import DummyClassifier
 from copy import copy
 import numpy as np
-# from flytekit import task, workflow, dynamic, ImageSpec
+from flytekit import task, workflow, dynamic
 import wandb
 import joblib
 import lightgbm as lgb
+from typing import Dict, List, Union, Any
+
 
 random_state = 7
 no_of_active_features = 15
@@ -205,7 +207,7 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series):
 
     outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
@@ -577,9 +579,10 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def model_fitting_loop_with_grid_search(
-    model, x_train_df, y_train_df, inner_cv, grid_param, model_name
+    model: Any, 
+    x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold, grid_param: Dict, model_name: str
 ):
     
     print(f"fitting {model_name} model... ")
@@ -604,8 +607,8 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-# @dynamic(container_image="istiyaksiddiquee/flyte-for-kube:1.0.0")
-def fit_multiple_models(x_train_df, y_train_df, inner_cv):
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
+def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
 
     # Logistic Regression
     # logit_grid = {
@@ -735,7 +738,7 @@ def flip_true_false(y):
     return flipped_y
 
 
-# @workflow
+@workflow
 def work():
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
