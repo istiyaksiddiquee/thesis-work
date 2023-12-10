@@ -11,7 +11,9 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     confusion_matrix,
+    roc_auc_score,
 )
+from time import time
 import xgboost as xgb
 from sklearn.svm import SVC
 import matplotlib.pyplot as plt
@@ -26,28 +28,16 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_spli
 from sklearn.dummy import DummyClassifier
 from copy import copy
 import numpy as np
-from flytekit import task, workflow, dynamic
 import wandb
 import joblib
 import lightgbm as lgb
-from typing import Dict, List, Union, Any
+from typing import Dict, Any
+import pickle
+import logging
 
 
 random_state = 7
 no_of_active_features = 15
-
-# custom_image = ImageSpec(
-#     python_version="3.10",
-#     packages=[
-#         "scikit-learn",
-#         "pandas",
-#         "numpy",
-#         "chardet",
-#         "xgboost",
-#         "imbalanced-learn",
-#     ],
-#     base_image="python:3.10-slim-buster",
-# )
 
 scorers_for_gridcv = {
     "accuracy_score": make_scorer(accuracy_score),
@@ -56,17 +46,19 @@ scorers_for_gridcv = {
     "fbeta_score": make_scorer(fbeta_score, beta=0.5),
     "balanced_accuracy_score": make_scorer(balanced_accuracy_score),
     "average_precision_score": make_scorer(average_precision_score),
+    "roc_auc": make_scorer(roc_auc_score),
 }
 
 
 class CustomScore:
-    def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision) -> None:
+    def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc) -> None:
         self.accuracy = accuracy
         self.precision = precision
         self.recall = recall
         self.balanced_accuracy = balanced_accuracy
         self.fbeta = fbeta
         self.avg_precision = avg_precision
+        self.roc_auc = roc_auc
 
 
 def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
@@ -76,18 +68,22 @@ def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
     balanced_accuracy = balanced_accuracy_score(y_real, y_pred)
     fbeta = fbeta_score(y_real, y_pred, beta=0.5)
     avg_precision = average_precision_score(y_real, y_scores)
+    roc_auc = roc_auc_score(y_real, y_scores)
 
-    return CustomScore(accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision)
+    return CustomScore(accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc)
 
 
-def convert_scores_to_dict(custom_scores: CustomScore) -> dict:
+def convert_scores_to_dict(custom_scores: CustomScore):
     metrics = {}
+
     metrics["accuracy"] = round(custom_scores.accuracy, 2)
     metrics["precision"] = round(custom_scores.precision, 2)
     metrics["recall"] = round(custom_scores.recall, 2)
     metrics["balanced_accuracy"] = round(custom_scores.balanced_accuracy, 2)
     metrics["fbeta"] = round(custom_scores.fbeta, 2)
     metrics["avg_precision"] = round(custom_scores.avg_precision, 2)
+    metrics["roc_auc"] = round(custom_scores.roc_auc, 2)
+
     return metrics
 
 
@@ -129,66 +125,15 @@ def read_files(file_path: str):
     return vosoughi_df
 
 
-def calculate_tpr_fpr(y_real, y_pred):
-    """
-    Calculates the True Positive Rate (tpr) and the True Negative Rate (fpr) based on real and predicted observations
-
-    Args:
-        y_real: The list or series with the real classes
-        y_pred: The list or series with the predicted classes
-
-    Returns:
-        tpr: The True Positive Rate of the classifier
-        fpr: The False Positive Rate of the classifier
-    """
-
-    # Calculates the confusion matrix and recover each element
-    cm = confusion_matrix(y_real, y_pred)
-    TN = cm[0, 0]
-    FP = cm[0, 1]
-    FN = cm[1, 0]
-    TP = cm[1, 1]
-
-    # Calculates tpr and fpr
-    tpr = TP / (TP + FN)  # sensitivity - true positive rate
-    fpr = 1 - TN / (TN + FP)  # 1-specificity - false positive rate
-
-    prec = TP / (TP + FP)
-    rec = TP / (TP + FN)
-
-    return tpr, fpr, prec, rec
-
-
-def get_all_roc_coordinates(y_real, y_proba):
-    """
-    Calculates all the ROC Curve coordinates (tpr and fpr) by considering each point as a threshold for the predicion of the class.
-
-    Args:
-        y_real: The list or series with the real classes.
-        y_proba: The array with the probabilities for each class, obtained by using the `.predict_proba()` method.
-
-    Returns:
-        tpr_list: The list of TPRs representing each threshold.
-        fpr_list: The list of FPRs representing each threshold.
-    """
-    tpr_list = [0]
-    fpr_list = [0]
-    for i in range(len(y_proba)):
-        threshold = y_proba[i]
-        y_pred = y_proba >= threshold
-        tpr, fpr = calculate_tpr_fpr(y_real, y_pred)
-        tpr_list.append(tpr)
-        fpr_list.append(fpr)
-    return tpr_list, fpr_list
-
-
 def filter_and_split_df(df: pd.DataFrame):
     test_size = 0.15
 
     filtered_df = df[(df.characteristic_distance != -99999) & (df.depth != 0)]
     filtered_df = filtered_df.drop(columns=["avg_cluster_coef"], axis=1)
     filtered_df = filtered_df.drop(["weakly_cc"], axis=1)
-    total_features = no_of_active_features - 2
+    filtered_df = filtered_df.drop(["strongly_cc"], axis=1)
+    filtered_df = filtered_df.drop(["size"], axis=1)
+    total_features = no_of_active_features - 4
 
     X = filtered_df.iloc[:, 3:total_features]
     Y = filtered_df.iloc[:, total_features]
@@ -197,9 +142,9 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@workflow(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
-    
+    start = time()
+
     outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
 
     logit_epoch_id = -1
@@ -225,24 +170,27 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
     loop_index = 0
 
+    logging.info("NESTED_LOOP: %s", "loop starts")
+
     for train_index, val_index in outer_cv.split(X_train_val.to_numpy()):
+        
         loop_index += 1
         epoch_str = "epoch_" + str(loop_index)
 
-        X_train, X_val = (
-            X_train_val.iloc[train_index, :],
-            X_train_val.iloc[val_index, :],
-        )
+        logging.info("NESTED_LOOP: %s", f"inside loop epoch {loop_index}")
+
+        X_train, X_val = (X_train_val.iloc[train_index, :], X_train_val.iloc[val_index, :])
 
         y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
 
+        logging.info("NESTED_LOOP: %s", "feature scaling")
         normalized_df = copy(X_train)
-        cd_first_quantile = np.quantile(normalized_df["size"], 0.25)
-        cd_third_quantile = np.quantile(normalized_df["size"], 0.75)
+        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
         normalized_df["depth"] = np.log(normalized_df["depth"])
-        normalized_df["size"] = np.log(normalized_df["size"])
         normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+        # normalized_df["size"] = np.log(normalized_df["size"])
+        # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
         normalized_df["characteristic_distance"] = np.log(
             normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile
         )
@@ -255,8 +203,11 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
         inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
-        dt_result, svc_result, rf_result, logit_result, xgb_result, lgb_result= fit_multiple_models(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, inner_cv=inner_cv
-        
+        logging.info("NESTED_LOOP: %s", "entering model fitting")
+        dt_result, svc_result, rf_result, logit_result, xgb_result, lgb_result = fit_multiple_models(
+            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, inner_cv=inner_cv
+        )
+
         if logit_result != None:
             logit_model = logit_result.best_estimator_
             wandb.init(project="thesis", group="logit", job_type=epoch_str)
@@ -268,11 +219,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
             logit_cv_result_table = wandb.Table(dataframe=logit_cv_result_df)
-            logit_cv_result_artifact = wandb.Artifact("logit_cv_result_artifact_" + epoch_str, type="dataset")
+            logit_cv_result_artifact = wandb.Artifact("logit_cv_result_artifact_" + epoch_str, type="cv_result")
             logit_cv_result_artifact.add(logit_cv_result_table, "logit_cv_result_table_" + epoch_str)
             logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
             logit_cv_result_df.to_csv(logit_cv_file_name)
             logit_cv_result_artifact.add_file(logit_cv_file_name)
+            wandb.log_artifact(logit_cv_result_artifact)
 
             wandb.finish()
 
@@ -292,11 +244,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
             dt_cv_result_table = wandb.Table(dataframe=dt_cv_result_df)
-            dt_cv_result_artifact = wandb.Artifact("dt_cv_result_artifact_" + epoch_str, type="dataset")
+            dt_cv_result_artifact = wandb.Artifact("dt_cv_result_artifact_" + epoch_str, type="cv_result")
             dt_cv_result_artifact.add(dt_cv_result_table, "dt_cv_result_table_" + epoch_str)
             dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
             dt_cv_result_df.to_csv(dt_cv_file_name)
             dt_cv_result_artifact.add_file(dt_cv_file_name)
+            wandb.log_artifact(dt_cv_result_artifact)
 
             wandb.finish()
 
@@ -316,11 +269,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             svc_cv_result_df = pd.DataFrame(svc_result.cv_results_)
             svc_cv_result_table = wandb.Table(dataframe=svc_cv_result_df)
-            svc_cv_result_artifact = wandb.Artifact("svc_cv_result_artifact_" + epoch_str, type="dataset")
+            svc_cv_result_artifact = wandb.Artifact("svc_cv_result_artifact_" + epoch_str, type="cv_result")
             svc_cv_result_artifact.add(svc_cv_result_table, "svc_cv_result_table_" + epoch_str)
             svc_cv_file_name = f"./svc_cv_result_{epoch_str}.csv"
             svc_cv_result_df.to_csv(svc_cv_file_name)
             svc_cv_result_artifact.add_file(svc_cv_file_name)
+            wandb.log_artifact(svc_cv_result_artifact)
 
             wandb.finish()
 
@@ -340,11 +294,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
             rf_cv_result_table = wandb.Table(dataframe=rf_cv_result_df)
-            rf_cv_result_artifact = wandb.Artifact("rf_cv_result_artifact_" + epoch_str, type="dataset")
+            rf_cv_result_artifact = wandb.Artifact("rf_cv_result_artifact_" + epoch_str, type="cv_result")
             rf_cv_result_artifact.add(rf_cv_result_table, "rf_cv_result_table_" + epoch_str)
             rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
             rf_cv_result_df.to_csv(rf_cv_file_name)
             rf_cv_result_artifact.add_file(rf_cv_file_name)
+            wandb.log_artifact(rf_cv_result_artifact)
 
             wandb.finish()
 
@@ -364,11 +319,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
             xgb_cv_result_table = wandb.Table(dataframe=xgb_cv_result_df)
-            xgb_cv_result_artifact = wandb.Artifact("xgb_cv_result_artifact_" + epoch_str, type="dataset")
+            xgb_cv_result_artifact = wandb.Artifact("xgb_cv_result_artifact_" + epoch_str, type="cv_result")
             xgb_cv_result_artifact.add(xgb_cv_result_table, "xgb_cv_result_table_" + epoch_str)
             xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
             xgb_cv_result_df.to_csv(xgb_cv_file_name)
             xgb_cv_result_artifact.add_file(xgb_cv_file_name)
+            wandb.log_artifact(xgb_cv_result_artifact)
 
             wandb.finish()
 
@@ -388,11 +344,12 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
             lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
             lgb_cv_result_table = wandb.Table(dataframe=lgb_cv_result_df)
-            lgb_cv_result_artifact = wandb.Artifact("lgb_cv_result_artifact_" + epoch_str, type="dataset")
+            lgb_cv_result_artifact = wandb.Artifact("lgb_cv_result_artifact_" + epoch_str, type="cv_result")
             lgb_cv_result_artifact.add(lgb_cv_result_table, "lgb_cv_result_table_" + epoch_str)
             lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
             lgb_cv_result_df.to_csv(lgb_cv_file_name)
             lgb_cv_result_artifact.add_file(lgb_cv_file_name)
+            wandb.log_artifact(lgb_cv_result_artifact)
 
             wandb.finish()
 
@@ -405,9 +362,9 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     cd_first_quantile = np.quantile(normalized_df["size"], 0.25)
     cd_third_quantile = np.quantile(normalized_df["size"], 0.75)
     normalized_df["depth"] = np.log(normalized_df["depth"])
-    normalized_df["size"] = np.log(normalized_df["size"])
     normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-    normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+    # normalized_df["size"] = np.log(normalized_df["size"])
+    # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
     normalized_df["characteristic_distance"] = np.log(
         normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile
     )
@@ -420,7 +377,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         scaled_resampled_y_train_val,
     ) = smotetomek.fit_resample(scaled_X_train_val, y_train_val)
 
-    dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
+    # dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
 
     if trained_logit_model != None:
         # store logit model
@@ -555,6 +512,8 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     # joblib.dump(refit_logit, "logistic")
     # joblib.dump(refit_xgb, "xgboost")
 
+    end = time()
+    print("took : " + str(end - start))
     return None
 
 
@@ -579,8 +538,7 @@ def smotetomek_as_cleaner():
     return smotetomek_as_cleaner
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def model_fitting_loop_with_grid_search(
+def generic_grid_search(
     model: Any,
     x_train_df: pd.Series,
     y_train_df: pd.Series,
@@ -588,8 +546,24 @@ def model_fitting_loop_with_grid_search(
     grid_param: Dict,
     model_name: str,
 ):
-    print(f"fitting {model_name} model... ")
+    result = None
+    # try:
+    #     clf = GridSearchCV(
+    #         estimator=model,
+    #         cv=inner_cv,
+    #         refit="average_precision_score",
+    #         param_grid=grid_param,
+    #         scoring=scorers_for_gridcv,
+    #         # verbose=1,
+    #         n_jobs=-1,
+    #     )
 
+    #     result = clf.fit(x_train_df, y_train_df)
+    # except:
+    #     print(f"Could not fit {model_name} model")
+
+    logging.info("Generic_Grid_Search: %s", f"fitting {model_name}")
+    
     clf = GridSearchCV(
         estimator=model,
         cv=inner_cv,
@@ -601,6 +575,7 @@ def model_fitting_loop_with_grid_search(
     )
 
     result = clf.fit(x_train_df, y_train_df)
+
     return result
 
 
@@ -610,8 +585,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_logit_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
+def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
     # Logistic Regression
     # logit_grid = {
     #     "penalty": ["l1", "l2", "elasticnet", None],
@@ -626,32 +600,21 @@ def fit_logit_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: Repeat
         "penalty": ["l2"],
     }
 
+    dt_grid = {"criterion": ["gini"]}
+
+    svc_grid = {"C": [0.1]}
+
+    rf_grid = {"criterion": ["gini"]}
+
+    xgb_grid = {
+        "colsample_bytree": [0.7],
+    }
+
     logit_model = LogisticRegression()
-
-    print(f"fitting logistic model... ")
-
-    clf = GridSearchCV(
-        estimator=logit_model,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=logit_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
+    logit_result = generic_grid_search(
+        logit_model, x_train_df, y_train_df, inner_cv, logit_grid, "Logistic Regression"
     )
 
-    logit_result = None
-
-    try:
-        logit_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("could not fit logistic model")
-
-    return logit_result
-
-
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_dt_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
     # # Decision Tree
     # dt_grid = {
     #     "criterion": ["gini", "entropy", "log_loss"],
@@ -661,71 +624,9 @@ def fit_dt_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedK
     #     "min_samples_leaf": [4, 5, 6, 7],
     # }
 
-    dt_grid = {"criterion": ["gini"]}
-
     dt_clf = DecisionTreeClassifier(random_state=random_state)
+    dt_result = generic_grid_search(dt_clf, x_train_df, y_train_df, inner_cv, dt_grid, "Decision Tree")
 
-    print(f"fitting DT model... ")
-
-    clf = GridSearchCV(
-        estimator=dt_clf,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=dt_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
-    )
-
-    dt_result = None
-
-    try:
-        dt_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("Could not fit DT Model")
-
-    return dt_result
-
-
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_rf_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
-    # # Random Forest
-    # rf_grid = {
-    #     "criterion": ["gini", "entropy", "log_loss"],
-    #     "max_depth": [_ for _ in range(1, 10, 1)],
-    #     "max_features": ["sqrt", "log2", None],
-    #     "min_samples_split": [_ for _ in range(1, 10, 1)],
-    #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-    # }
-
-    rf_grid = {"criterion": ["gini"]}
-
-    rf_model = RandomForestClassifier()
-
-    print(f"fitting RF model... ")
-
-    clf = GridSearchCV(
-        estimator=rf_model,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=rf_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
-    )
-
-    rf_result = None
-
-    try:
-        rf_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("Could not fit RF Model")
-
-    return rf_result
-
-
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_svc_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
     # # SVC
     # svc_grid = {
     #     "C": [0.1],
@@ -736,37 +637,24 @@ def fit_svc_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: Repeated
     #     "shrinking": [True, False],
     #     "coef0": [0.0, 0.1, 0.01, 0.5, 1],
     # }
-
-    svc_grid = {"C": [0.1]}
-
-    svc_model = SVC(predict_proba=True)
-
-    print(f"fitting SVC model... ")
-
-    clf = GridSearchCV(
-        estimator=svc_model,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=svc_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
+    svc_model = SVC()
+    svc_result = generic_grid_search(
+        svc_model, x_train_df, y_train_df, inner_cv, svc_grid, "Support Vector Machine"
     )
 
-    svc_result = None
-    try:
-        svc_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("Could not fit SVC Model")
+    # # Random Forest
+    # rf_grid = {
+    #     "criterion": ["gini", "entropy", "log_loss"],
+    #     "max_depth": [_ for _ in range(1, 10, 1)],
+    #     "max_features": ["sqrt", "log2", None],
+    #     "min_samples_split": [_ for _ in range(1, 10, 1)],
+    #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+    # }
 
-    return svc_result
-
-
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_xgb_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
-    xgb_grid = {
-        "colsample_bytree": [0.7],
-    }
+    rf_model = RandomForestClassifier()
+    rf_result = generic_grid_search(
+        rf_model, x_train_df, y_train_df, inner_cv, rf_grid, "Random Forest"
+    )
 
     # # XGBoost
     # xgb_grid = {
@@ -781,67 +669,15 @@ def fit_xgb_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: Repeated
     # }
 
     xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
+    xgb_result = generic_grid_search(xgb_model, x_train_df, y_train_df, inner_cv, xgb_grid, "XGBoost")
 
-    print(f"fitting XGB model... ")
-
-    clf = GridSearchCV(
-        estimator=xgb_model,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=xgb_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
-    )
-
-    xgb_result = None
-
-    try:
-        xgb_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("Could not fit XGB Model")
-
-    return xgb_result
-
-
-@task(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_lgb_clf(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
     lgb_grid = {"num_leaves": [31]}
     lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
+    lgb_result = generic_grid_search(lgb_model, x_train_df, y_train_df, inner_cv, lgb_grid, "LightGBM")
 
-    print(f"fitting LGB model... ")
-
-    clf = GridSearchCV(
-        estimator=lgb_model,
-        cv=inner_cv,
-        refit="average_precision_score",
-        param_grid=lgb_grid,
-        scoring=scorers_for_gridcv,
-        # verbose=1,
-        n_jobs=-1,
-    )
-
-    lgb_result = None
-
-    try:
-        lgb_result = clf.fit(x_train_df, y_train_df)
-    except:
-        print("Could not fit LGB Model")
-
-    return lgb_result
-
-
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:3.0.0")
-def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
+    logging.info("Fit_Multiple_Models: %s", "one run complete, returning to nested loop")
     
-    logit_result = fit_logit_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-    dt_result = fit_dt_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-    rf_result = fit_rf_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-    svc_result = fit_svc_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-    xgb_result = fit_xgb_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-    lgb_result = fit_lgb_clf(x_train_df=x_train_df, y_train_df=y_train_df, inner_cv=inner_cv)
-
-    return dt_result, svc_result, rf_result, logit_result, xgb_result, lgb_result
+    return (dt_result, svc_result, rf_result, logit_result, xgb_result, lgb_result)
 
 
 # def flip_true_false(y):
@@ -850,32 +686,39 @@ def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: 
 #     return flipped_y
 
 
-@workflow
 def work():
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
+    # FORMAT = '%(asctime)-15s %(message)s'
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
+
     # csv_path = '/root'
     csv_path = "."
 
+    logging.info("WORK: %s", "initiating processing, reading files")
     df = read_files(csv_path)
 
+    logging.info("WORK: %s", "filtering and splitting data")
     X_train_val, X_test, y_train_val, y_test = filter_and_split_df(df)
 
-    # with open("./x_train_val.pickle", "wb") as file:
-    #     pickle.dump(X_train_val, file)
+    logging.info("WORK: %s", "storing splits")
+    with open("./x_train_val.pickle", "wb") as file:
+        pickle.dump(X_train_val, file)
 
-    # with open("./y_train_val.pickle", "wb") as file:
-    #     pickle.dump(y_train_val, file)
+    with open("./y_train_val.pickle", "wb") as file:
+        pickle.dump(y_train_val, file)
 
-    # with open("./x_test.pickle", "wb") as file:
-    #     pickle.dump(X_test, file)
+    with open("./x_test.pickle", "wb") as file:
+        pickle.dump(X_test, file)
 
-    # with open("./y_test.pickle", "wb") as file:
-    #     pickle.dump(y_test, file)
+    with open("./y_test.pickle", "wb") as file:
+        pickle.dump(y_test, file)
 
     # call the nested loop to get all the trained models
     print(X_train_val.shape, X_test.shape, y_train_val.shape, y_test.shape)
+
+    logging.info("WORK: %s", "entering nested loop")
     nested_loop(X_train_val=X_train_val, y_train_val=y_train_val)
 
 
