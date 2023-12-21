@@ -7,4 +7,4 @@ imbalanced-learn
 matplotlib
 lightgbm
 wandb
-flytekit
+smote-variants==0.7.3

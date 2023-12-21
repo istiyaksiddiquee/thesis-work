@@ -10,7 +10,10 @@ os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
 os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 os.environ["WANDB_PROJECT"] = "test-1"
 
-run = wandb.init(project="test-1", job_type="demo_run_2")
+# run = wandb.init(project="test-1", job_type="demo_run_2")
+
+wandb.init(project="thesis")
+wandb.alert(title="High Loss", text="Loss is increasing rapidly")
 
 # with wandb.init() as run:
 #     run.log({"a": 1, "b": 2})
@@ -57,14 +60,14 @@ X_train, X_test, y_train, y_test = train_test_split(
 # # # # Save the artifact
 # run.log_artifact(artifact)
 
-model_at = run.use_artifact("recommender_model:latest")
-model_dir = model_at.download()
-print("model: ", os.path.join(model_dir, "clf.joblib"))
-model = load(os.path.join(model_dir, "clf.joblib"))
+# model_at = run.use_artifact("recommender_model:latest")
+# model_dir = model_at.download()
+# print("model: ", os.path.join(model_dir, "clf.joblib"))
+# model = load(os.path.join(model_dir, "clf.joblib"))
 
-y_pred = model.predict(X_test)
+# y_pred = model.predict(X_test)
 
-print(accuracy_score(y_test, y_pred))
+# print(accuracy_score(y_test, y_pred))
 
-# # Finish the run
-run.finish()
+# # # Finish the run
+# run.finish()

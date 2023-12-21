@@ -1,0 +1,1 @@
+helm install flyte-binary flyteorg/flyte-binary  --values local-values.yaml -n flyte
