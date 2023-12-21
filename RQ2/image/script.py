@@ -37,10 +37,12 @@ import lightgbm as lgb
 from typing import Dict, Any
 import pickle
 import logging
-
+from flytekit import task, workflow, dynamic, ImageSpec, Resources
+import smote_variants as sv
 
 random_state = 7
 no_of_active_features = 15
+optimization_metric = "average_precision_score"
 
 scorers_for_gridcv = {
     "accuracy_score": make_scorer(accuracy_score),
@@ -62,7 +64,10 @@ class CustomScore:
         self.fbeta = fbeta
         self.avg_precision = avg_precision
         self.roc_auc = roc_auc
-
+        
+        
+    def get_default_metric(self) -> float:
+        return self.avg_precision
 
 def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
     accuracy = accuracy_score(y_real, y_pred)
@@ -170,6 +175,7 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     start = time()
 
@@ -222,169 +228,50 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train = scaler.fit_transform(normalized_df)
-
-        smotetomek = get_data_pipeline_with_smotetomek()
-        scaled_resampled_X_train, scaled_resampled_y_train = smotetomek.fit_resample(scaled_X_train, y_train)
+        scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train, y_train)
 
         inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
-        logging.info("NESTED_LOOP: %s", "entering model fitting")
+        logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
 
-        logit_result, dt_result, svc_result, rf_result, xgb_result, lgb_result = fit_multiple_models(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, inner_cv=inner_cv
-        )
+        logit_result, logit_score = fit_logistic_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+        dt_result, dt_score = fit_dt_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+        svc_result, svc_score = fit_svc_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+        rf_result, rf_score = fit_rf_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+        xgb_result, xgb_score = fit_xgb_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+        lgb_result, lgb_score = fit_lgb_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
 
-        logging.info("NESTED_LOOP: %s", f"{epoch_str} model fiting completed, logging begins.")
+        logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
+        
+        if logit_result != None and logit_avg_prec < logit_score:
+            logit_avg_prec = logit_score
+            trained_logit_model = logit_result.best_estimator_
+            logit_epoch_id = loop_index
 
-        if logit_result != None:
-            logit_model = logit_result.best_estimator_
-            wandb.init(project="thesis-test", group="logit", job_type=epoch_str)
+        if dt_result != None and dt_avg_prec < dt_score:
+            dt_avg_prec = dt_score
+            trained_dt_model = dt_result.best_estimator_
+            dt_epoch_id = loop_index
 
-            logit_Y_pred = logit_model.predict(X_val)
-            logit_Y_pred_proba = logit_model.predict_proba(X_val)
-            logit_custom_score = get_all_scores(Y_val, logit_Y_pred, logit_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(logit_custom_score))
+        if svc_result != None and svc_avg_prec < svc_score:
+            svc_avg_prec = svc_score
+            trained_svc_model = svc_result.best_estimator_
+            svc_epoch_id = loop_index
 
-            logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
-            # logit_cv_result_table = wandb.Table(dataframe=logit_cv_result_df)
-            logit_cv_result_artifact = wandb.Artifact("logit_cv_result_artifact_" + epoch_str, type="cv_result")
-            # logit_cv_result_artifact.add(logit_cv_result_table, "logit_cv_result_table_" + epoch_str)
-            logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
-            logit_cv_result_df.to_csv(logit_cv_file_name)
-            logit_cv_result_artifact.add_file(logit_cv_file_name)
-            wandb.log_artifact(logit_cv_result_artifact)
+        if rf_result != None and rf_avg_prec < rf_score:
+            rf_avg_prec = rf_score
+            trained_rf_model = rf_result.best_estimator_
+            rf_epoch_id = loop_index
 
-            wandb.finish()
+        if xgb_result != None and xgb_avg_prec < xgb_score:
+            xgb_avg_prec = xgb_score
+            trained_xgb_model = xgb_result.best_estimator_
+            xgb_epoch_id = loop_index
 
-            if logit_avg_prec < logit_custom_score.avg_precision:
-                logit_avg_prec = logit_custom_score.avg_precision
-                trained_logit_model = logit_model
-                logit_epoch_id = loop_index
-
-        if dt_result != None:
-            dt_model = dt_result.best_estimator_
-
-            wandb.init(project="thesis-test", group="dt", job_type="epoch_" + str(loop_index))
-            dt_Y_pred = dt_model.predict(X_val)
-            dt_Y_pred_proba = dt_model.predict_proba(X_val)
-            dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(dt_custom_score))
-
-            dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
-            # dt_cv_result_table = wandb.Table(dataframe=dt_cv_result_df)
-            dt_cv_result_artifact = wandb.Artifact("dt_cv_result_artifact_" + epoch_str, type="cv_result")
-            # dt_cv_result_artifact.add(dt_cv_result_table, "dt_cv_result_table_" + epoch_str)
-            dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
-            dt_cv_result_df.to_csv(dt_cv_file_name)
-            dt_cv_result_artifact.add_file(dt_cv_file_name)
-            wandb.log_artifact(dt_cv_result_artifact)
-
-            wandb.finish()
-
-            if dt_avg_prec < dt_custom_score.avg_precision:
-                dt_avg_prec = dt_custom_score.avg_precision
-                trained_dt_model = dt_model
-                dt_epoch_id = loop_index
-
-        if svc_result != None:
-            svc_model = svc_result.best_estimator_
-
-            wandb.init(project="thesis-test", group="svc", job_type="epoch_" + str(loop_index))
-            svc_Y_pred = svc_model.predict(X_val)
-            svc_Y_pred_proba = svc_model.predict_proba(X_val)
-            svc_custom_score = get_all_scores(Y_val, svc_Y_pred, svc_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(svc_custom_score))
-
-            svc_cv_result_df = pd.DataFrame(svc_result.cv_results_)
-            # svc_cv_result_table = wandb.Table(dataframe=svc_cv_result_df)
-            svc_cv_result_artifact = wandb.Artifact("svc_cv_result_artifact_" + epoch_str, type="cv_result")
-            # svc_cv_result_artifact.add(svc_cv_result_table, "svc_cv_result_table_" + epoch_str)
-            svc_cv_file_name = f"./svc_cv_result_{epoch_str}.csv"
-            svc_cv_result_df.to_csv(svc_cv_file_name)
-            svc_cv_result_artifact.add_file(svc_cv_file_name)
-            wandb.log_artifact(svc_cv_result_artifact)
-
-            wandb.finish()
-
-            if svc_avg_prec < svc_custom_score.avg_precision:
-                svc_avg_prec = svc_custom_score.avg_precision
-                trained_svc_model = svc_model
-                svc_epoch_id = loop_index
-
-        if rf_result != None:
-            rf_model = rf_result.best_estimator_
-
-            wandb.init(project="thesis-test", group="rf", job_type="epoch_" + str(loop_index))
-            rf_Y_pred = rf_model.predict(X_val)
-            rf_Y_pred_proba = rf_model.predict_proba(X_val)
-            rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(rf_custom_score))
-
-            rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
-            # rf_cv_result_table = wandb.Table(dataframe=rf_cv_result_df)
-            rf_cv_result_artifact = wandb.Artifact("rf_cv_result_artifact_" + epoch_str, type="cv_result")
-            # rf_cv_result_artifact.add(rf_cv_result_table, "rf_cv_result_table_" + epoch_str)
-            rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
-            rf_cv_result_df.to_csv(rf_cv_file_name)
-            rf_cv_result_artifact.add_file(rf_cv_file_name)
-            wandb.log_artifact(rf_cv_result_artifact)
-
-            wandb.finish()
-
-            if rf_avg_prec < rf_custom_score.avg_precision:
-                rf_avg_prec = rf_custom_score.avg_precision
-                trained_rf_model = rf_model
-                rf_epoch_id = loop_index
-
-        if xgb_result != None:
-            xgb_model = xgb_result.best_estimator_
-
-            wandb.init(project="thesis-test", group="xgb", job_type="epoch_" + str(loop_index))
-            xgb_Y_pred = xgb_model.predict(X_val)
-            xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
-            xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(xgb_custom_score))
-
-            xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
-            # xgb_cv_result_table = wandb.Table(dataframe=xgb_cv_result_df)
-            xgb_cv_result_artifact = wandb.Artifact("xgb_cv_result_artifact_" + epoch_str, type="cv_result")
-            # xgb_cv_result_artifact.add(xgb_cv_result_table, "xgb_cv_result_table_" + epoch_str)
-            xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
-            xgb_cv_result_df.to_csv(xgb_cv_file_name)
-            xgb_cv_result_artifact.add_file(xgb_cv_file_name)
-            wandb.log_artifact(xgb_cv_result_artifact)
-
-            wandb.finish()
-
-            if xgb_avg_prec < xgb_custom_score.avg_precision:
-                xgb_avg_prec = xgb_custom_score.avg_precision
-                trained_xgb_model = xgb_model
-                xgb_epoch_id = loop_index
-
-        if lgb_result != None:
-            lgb_model = lgb_result.best_estimator_
-            wandb.init(project="thesis-test", group="lgb", job_type=epoch_str)
-
-            lgb_Y_pred = lgb_model.predict(X_val)
-            lgb_Y_pred_proba = lgb_model.predict_proba(X_val)
-            lgb_custom_score = get_all_scores(Y_val, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(lgb_custom_score))
-
-            lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
-            # lgb_cv_result_table = wandb.Table(dataframe=lgb_cv_result_df)
-            lgb_cv_result_artifact = wandb.Artifact("lgb_cv_result_artifact_" + epoch_str, type="cv_result")
-            # lgb_cv_result_artifact.add(lgb_cv_result_table, "lgb_cv_result_table_" + epoch_str)
-            lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
-            lgb_cv_result_df.to_csv(lgb_cv_file_name)
-            lgb_cv_result_artifact.add_file(lgb_cv_file_name)
-            wandb.log_artifact(lgb_cv_result_artifact)
-
-            wandb.finish()
-
-            if lgb_avg_prec < lgb_custom_score.avg_precision:
-                lgb_avg_prec = lgb_custom_score.avg_precision
-                trained_lgb_model = lgb_model
-                lgb_epoch_id = loop_index
+        if lgb_result != None and lgb_avg_prec < lgb_score:
+            lgb_avg_prec = lgb_score
+            trained_lgb_model = lgb_result.best_estimator_
+            lgb_epoch_id = loop_index
 
     logging.info("NESTED_LOOP: %s", f"{epoch_str} logging complete, re-fitting starts")
     normalized_df = copy(X_train_val)
@@ -398,12 +285,8 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
 
     scaler = StandardScaler().set_output(transform="pandas")
     scaled_X_train_val = scaler.fit_transform(normalized_df)
-    smotetomek = get_data_pipeline_with_smotetomek()
-    (
-        scaled_resampled_X_train_val,
-        scaled_resampled_y_train_val,
-    ) = smotetomek.fit_resample(scaled_X_train_val, y_train_val)
-
+    scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
+    
     # dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
 
     if trained_logit_model != None:
@@ -542,68 +425,13 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     end = time()
     time_taken = str(end - start)
     logging.info("NESTED_LOOP: %s", f"{epoch_str} re-fitting logging compelte, end of epoch. it took {time_taken} seconds")
-    return None
+    return
 
 
-def get_data_pipeline_with_smotetomek():
-    smotetomek = SMOTETomek(
-        smote=SMOTE(sampling_strategy="all"),
-        tomek=TomekLinks(
-            sampling_strategy="majority",
-        ),
-        random_state=random_state,
-    )
-
-    return smotetomek
-
-
-def smotetomek_as_cleaner():
-    smotetomek_as_cleaner = SMOTETomek(
-        tomek=TomekLinks(),
-        random_state=random_state,
-    )
-
-    return smotetomek_as_cleaner
-
-
-def generic_grid_search(
-    model: Any,
-    x_train_df: pd.Series,
-    y_train_df: pd.Series,
-    inner_cv: RepeatedKFold,
-    grid_param: Dict,
-    model_name: str,
-):
-    logging.info("GENERIC_GRID_SEARCH: %s", f"fitting {model_name}")
-
-    result = None
-    try:
-        clf = GridSearchCV(
-            estimator=model,
-            cv=inner_cv,
-            refit="average_precision_score",
-            param_grid=grid_param,
-            scoring=scorers_for_gridcv,
-            # verbose=1,
-            n_jobs=-1,
-        )
-
-        result = clf.fit(x_train_df, y_train_df)
-    except:
-        print(f"Could not fit {model_name} model")
-
-    # clf = GridSearchCV(
-    #         estimator=model,
-    #         cv=inner_cv,
-    #         refit="average_precision_score",
-    #         param_grid=grid_param,
-    #         scoring=scorers_for_gridcv,
-    #         verbose=0,
-    #         n_jobs=-1,
-    #     )
-
-    # result = clf.fit(x_train_df, y_train_df)
-    return result
+def oversample_data(X: pd.Series, y: pd.Series):
+    oversampler = sv.polynom_fit_SMOTE_poly()
+    X_samp, y_samp = oversampler.sample(X, y)
+    return X_samp, y_samp
 
 
 def fit_dummy_classifier(x_train_df, y_train_df, constant):
@@ -612,99 +440,425 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: RepeatedKFold):
-    #
-    # logit_grid = {
-    #     "penalty": ["l2"],
-    # }
-
-    # dt_grid = {"criterion": ["gini"]}
-
-    # svc_grid = {"C": [0.1]}
-
-    # rf_grid = {"criterion": ["gini"]}
-
-    # xgb_grid = {
-    #     "colsample_bytree": [0.7],
-    # }
-
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_logistic_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
     # Logistic Regression
-    logit_grid = {
-        "penalty": ["l1", "l2", "elasticnet", None],
-        "dual": [True, False],
-        "C": [_ for _ in range(1, 10, 1)],
-        "fit_intercept": [True, False],
-        "solver": ["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"],
-        "n_jobs": [-1],
-    }
-    logit_model = LogisticRegression()
 
-    # # Decision Tree
-    dt_grid = {
-        "criterion": ["gini", "entropy", "log_loss"],
-        "splitter": ["best", "random"],
-        "max_depth": [_ for _ in range(1, 10, 1)],
-        "min_samples_split": [_ for _ in range(1, 10, 1)],
-        "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-    }
-    dt_clf = DecisionTreeClassifier(random_state=random_state)
-
-    # # SVC
-    svc_grid = {
-        "C": [0.1],
-        "kernel": ["linear", "poly", "rbf", "sigmoid"],
-        "degree": [_ for _ in range(1, 5, 1)],
-        "gamma": ["scale", "auto"],
-        "decision_function_shape": ["ovo", "ovr"],
-        "shrinking": [True, False],
-        "coef0": [0.0, 0.1, 0.01, 0.5, 1],
-    }
-    svc_model = SVC()
-
-    # # Random Forest
-    rf_grid = {
-        "criterion": ["gini", "entropy", "log_loss"],
-        "max_depth": [_ for _ in range(1, 10, 1)],
-        "max_features": ["sqrt", "log2", None],
-        "min_samples_split": [_ for _ in range(1, 10, 1)],
-        "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-    }
-    rf_model = RandomForestClassifier()
-
-    # # XGBoost
-    xgb_grid = {
-        "max_depth": range(2, 10, 1),
-        "n_estimators": range(60, 220, 40),
-        "learning_rate": [0.1, 0.01, 0.05],
-        "booster": ["gbtree", "gblinear", "dart"],
-        "max_depth": [_ for _ in range(1, 10, 1)],
-        "min_child_weight": [_ for _ in range(1, 20, 1)],
-        "subsample": [0.8],
-        "colsample_bytree": [0.7],
-    }
-
-    xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
-
-    lgb_grid = {"num_leaves": [31]}
-    lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
-
+    logging.info("FIT_LOGIT_MODEL: %s", f"logit run scheduled for {epoch_str}.")
+    
     logit_result = None
+    logit_score = None
+    try:
+        logit_grid = {
+            "penalty": ["l2"],
+        }
+        # logit_grid = {
+        #     "penalty": ["l1", "l2", "elasticnet", None],
+        #     "dual": [True, False],
+        #     "C": [_ for _ in range(1, 10, 1)],
+        #     "fit_intercept": [True, False],
+        #     "solver": ["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"],
+        #     "n_jobs": [-1],
+        # }
+        logit_model = LogisticRegression()
+        
+        clf = GridSearchCV(
+            estimator=logit_model,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=logit_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
+
+        logit_result = clf.fit(x_train_df, y_train_df)
+
+    except Exception as error:
+        logging.error("Could not fit Logistic model")
+        logging.error("An exception occurred:", error)
+
+    if logit_result != None:
+        logit_model = logit_result.best_estimator_
+        wandb.init(project="thesis-test", group="logit", job_type=epoch_str)
+
+        logit_Y_pred = logit_model.predict(X_val)
+        logit_Y_pred_proba = logit_model.predict_proba(X_val)
+        logit_custom_score = get_all_scores(Y_val, logit_Y_pred, logit_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(logit_custom_score))
+
+        logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
+        # logit_cv_result_table = wandb.Table(dataframe=logit_cv_result_df)
+        logit_cv_result_artifact = wandb.Artifact("logit_cv_result_artifact_" + epoch_str, type="cv_result")
+        # logit_cv_result_artifact.add(logit_cv_result_table, "logit_cv_result_table_" + epoch_str)
+        logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
+        logit_cv_result_df.to_csv(logit_cv_file_name)
+        logit_cv_result_artifact.add_file(logit_cv_file_name)
+        wandb.log_artifact(logit_cv_result_artifact)
+
+        wandb.finish()
+        logit_score = logit_custom_score.get_default_metric()
+    
+    logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
+    return logit_result, logit_score
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_dt_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
+    # Decision Tree
+
+    logging.info("FIT_DT_MODEL: %s", f"dt run scheduled for {epoch_str}.")
+        
     dt_result = None
+    dt_score = None
+    try:
+        dt_grid = {"criterion": ["gini"]}
+        
+        # dt_grid = {
+        #     "criterion": ["gini", "entropy", "log_loss"],
+        #     "splitter": ["best", "random"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "min_samples_split": [_ for _ in range(1, 10, 1)],
+        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        # }
+        dt_clf = DecisionTreeClassifier(random_state=random_state)
+        
+        clf = GridSearchCV(
+            estimator=dt_clf,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=dt_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
+
+        dt_result = clf.fit(x_train_df, y_train_df)
+
+    except Exception as error:
+        logging.error("Could not fit Decision Tree model")
+        logging.error("An exception occurred:", error)
+
+    if dt_result != None:
+        dt_model = dt_result.best_estimator_
+        wandb.init(project="thesis-test", group="dt", job_type=epoch_str)
+        dt_Y_pred = dt_model.predict(X_val)
+        dt_Y_pred_proba = dt_model.predict_proba(X_val)
+        dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(dt_custom_score))
+
+        dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
+        # dt_cv_result_table = wandb.Table(dataframe=dt_cv_result_df)
+        dt_cv_result_artifact = wandb.Artifact("dt_cv_result_artifact_" + epoch_str, type="cv_result")
+        # dt_cv_result_artifact.add(dt_cv_result_table, "dt_cv_result_table_" + epoch_str)
+        dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
+        dt_cv_result_df.to_csv(dt_cv_file_name)
+        dt_cv_result_artifact.add_file(dt_cv_file_name)
+        wandb.log_artifact(dt_cv_result_artifact)
+
+        wandb.finish()
+        dt_score = dt_custom_score.get_default_metric()
+        
+    logging.info("FIT_DT_MODEL: %s", "dt run completed.")
+    return dt_result, dt_score
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_svc_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
+    # SVC
+
+    logging.info("FIT_SVC_MODEL: %s", f"svc run scheduled for {epoch_str}.")
+    
     svc_result = None
+    svc_score = None
+    
+    try:
+        # SVC
+        svc_grid = {"C": [0.1]}
+        # svc_grid = {
+        #     "C": [0.1],
+        #     "kernel": ["linear", "poly", "rbf", "sigmoid"],
+        #     "degree": [_ for _ in range(1, 5, 1)],
+        #     "gamma": ["scale", "auto"],
+        #     "decision_function_shape": ["ovo", "ovr"],
+        #     "shrinking": [True, False],
+        #     "coef0": [0.0, 0.1, 0.01, 0.5, 1],
+        # }
+        svc_model = SVC()
+                
+        clf = GridSearchCV(
+            estimator=svc_model,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=svc_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
+
+        svc_result = clf.fit(x_train_df, y_train_df)
+
+    except Exception as error:
+        logging.error("Could not fit SVC model")
+        logging.error("An exception occurred:", error)
+
+    if svc_result != None:
+        svc_model = svc_result.best_estimator_
+        
+        wandb.init(project="thesis-test", group="svc", job_type=epoch_str)
+        svc_Y_pred = svc_model.predict(X_val)
+        svc_Y_pred_proba = svc_model.predict_proba(X_val)
+        svc_custom_score = get_all_scores(Y_val, svc_Y_pred, svc_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(svc_custom_score))
+
+        svc_cv_result_df = pd.DataFrame(svc_result.cv_results_)
+        # svc_cv_result_table = wandb.Table(dataframe=svc_cv_result_df)
+        svc_cv_result_artifact = wandb.Artifact("svc_cv_result_artifact_" + epoch_str, type="cv_result")
+        # svc_cv_result_artifact.add(svc_cv_result_table, "svc_cv_result_table_" + epoch_str)
+        svc_cv_file_name = f"./svc_cv_result_{epoch_str}.csv"
+        svc_cv_result_df.to_csv(svc_cv_file_name)
+        svc_cv_result_artifact.add_file(svc_cv_file_name)
+        wandb.log_artifact(svc_cv_result_artifact)
+
+        wandb.finish()
+        
+        svc_score = svc_custom_score.get_default_metric()
+        
+    logging.info("FIT_SVC_MODEL: %s", "svc run completed.")
+    return svc_result, svc_score
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_rf_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
+    # Random Forest
+
+    logging.info("FIT_RF_MODEL: %s", f"rf run scheduled for {epoch_str}.")
+    
     rf_result = None
+    rf_score = None
+    try:
+        rf_grid = {"criterion": ["gini"]}
+        
+        # rf_grid = {
+        #     "criterion": ["gini", "entropy", "log_loss"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "max_features": ["sqrt", "log2", None],
+        #     "min_samples_split": [_ for _ in range(1, 10, 1)],
+        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        # }
+        rf_model = RandomForestClassifier()
+        
+        clf = GridSearchCV(
+            estimator=rf_model,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=rf_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
+
+        rf_result = clf.fit(x_train_df, y_train_df)
+
+    except Exception as error:
+        logging.error("Could not fit Random Forest model")
+        logging.error("An exception occurred:", error)
+
+    if rf_result != None:
+        rf_model = rf_result.best_estimator_
+
+        wandb.init(project="thesis-test", group="rf", job_type=epoch_str)
+        rf_Y_pred = rf_model.predict(X_val)
+        rf_Y_pred_proba = rf_model.predict_proba(X_val)
+        rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(rf_custom_score))
+
+        rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
+        # rf_cv_result_table = wandb.Table(dataframe=rf_cv_result_df)
+        rf_cv_result_artifact = wandb.Artifact("rf_cv_result_artifact_" + epoch_str, type="cv_result")
+        # rf_cv_result_artifact.add(rf_cv_result_table, "rf_cv_result_table_" + epoch_str)
+        rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
+        rf_cv_result_df.to_csv(rf_cv_file_name)
+        rf_cv_result_artifact.add_file(rf_cv_file_name)
+        wandb.log_artifact(rf_cv_result_artifact)
+
+        wandb.finish()
+        
+        rf_score = rf_custom_score.get_default_metric()
+        
+    logging.info("FIT_RF_MODEL: %s", "rf run completed.")
+    return rf_result, rf_score
+
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_xgb_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
+    # XGB
+
+    logging.info("FIT_XGB_MODEL: %s", f"xgb run scheduled for {epoch_str}.")
+    
     xgb_result = None
+    xgb_score = None
+    try:
+        # XGB
+        xgb_grid = {
+            "colsample_bytree": [0.7],
+        }
+        # xgb_grid = {
+        #     "max_depth": range(2, 10, 1),
+        #     "n_estimators": range(60, 220, 40),
+        #     "learning_rate": [0.1, 0.01, 0.05],
+        #     "booster": ["gbtree", "gblinear", "dart"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "min_child_weight": [_ for _ in range(1, 20, 1)],
+        #     "subsample": [0.8],
+        #     "colsample_bytree": [0.7],
+        # }
+
+        xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
+                
+        clf = GridSearchCV(
+            estimator=xgb_model,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=xgb_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
+
+        xgb_result = clf.fit(x_train_df, y_train_df)
+
+    except Exception as error:
+        logging.error("Could not fit XGB model")
+        logging.error("An exception occurred:", error)
+
+    if xgb_result != None:
+        xgb_model = xgb_result.best_estimator_
+
+        wandb.init(project="thesis-test", group="xgb", job_type=epoch_str)
+        xgb_Y_pred = xgb_model.predict(X_val)
+        xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
+        xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(xgb_custom_score))
+
+        xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
+        # xgb_cv_result_table = wandb.Table(dataframe=xgb_cv_result_df)
+        xgb_cv_result_artifact = wandb.Artifact("xgb_cv_result_artifact_" + epoch_str, type="cv_result")
+        # xgb_cv_result_artifact.add(xgb_cv_result_table, "xgb_cv_result_table_" + epoch_str)
+        xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
+        xgb_cv_result_df.to_csv(xgb_cv_file_name)
+        xgb_cv_result_artifact.add_file(xgb_cv_file_name)
+        wandb.log_artifact(xgb_cv_result_artifact)
+
+        wandb.finish()
+        
+        xgb_score = xgb_custom_score.get_default_metric()
+    
+    logging.info("FIT_XGB_MODEL: %s", "xgb run completed.")
+    return xgb_result, xgb_score
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+def fit_lgb_model(
+    x_train_df: pd.Series, 
+    y_train_df: pd.Series, 
+    X_val: pd.Series, 
+    Y_val: pd.Series, 
+    inner_cv: RepeatedKFold, 
+    epoch_str: str
+) -> Any:
+    # LGB
+
+    logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled for {epoch_str}.")
     lgb_result = None
+    lgb_score = None
+    try:
+        # LGB
+        lgb_grid = {"num_leaves": [31]}
+        
+        # xgb_grid = {
+        #     "max_depth": range(2, 10, 1),
+        #     "n_estimators": range(60, 220, 40),
+        #     "learning_rate": [0.1, 0.01, 0.05],
+        #     "booster": ["gbtree", "gblinear", "dart"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "min_child_weight": [_ for _ in range(1, 20, 1)],
+        #     "subsample": [0.8],
+        #     "colsample_bytree": [0.7],
+        # }
 
-    logit_result = generic_grid_search(logit_model, x_train_df, y_train_df, inner_cv, logit_grid, "Logistic Regression")
-    dt_result = generic_grid_search(dt_clf, x_train_df, y_train_df, inner_cv, dt_grid, "Decision Tree")
-    # svc_result = generic_grid_search(svc_model, x_train_df, y_train_df, inner_cv, svc_grid, "Support Vector Machine")
-    rf_result = generic_grid_search(rf_model, x_train_df, y_train_df, inner_cv, rf_grid, "Random Forest")
-    xgb_result = generic_grid_search(xgb_model, x_train_df, y_train_df, inner_cv, xgb_grid, "XGBoost")
-    lgb_result = generic_grid_search(lgb_model, x_train_df, y_train_df, inner_cv, lgb_grid, "LightGBM")
+        lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
+                
+        clf = GridSearchCV(
+            estimator=lgb_model,
+            cv=inner_cv,
+            refit=optimization_metric,
+            param_grid=lgb_grid,
+            scoring=scorers_for_gridcv,
+            verbose=0,
+            n_jobs=-1,
+        )
 
-    logging.info("Fit_Multiple_Models: %s", "one run complete, returning to nested loop")
+        lgb_result = clf.fit(x_train_df, y_train_df)
 
-    return (logit_result, dt_result, svc_result, rf_result, xgb_result, lgb_result)
+    except Exception as error:
+        logging.error("Could not fit XGB model")
+        logging.error("An exception occurred:", error)
+
+    if lgb_result != None:
+        lgb_model = lgb_result.best_estimator_
+        wandb.init(project="thesis-test", group="lgb", job_type=epoch_str)
+
+        lgb_Y_pred = lgb_model.predict(X_val)
+        lgb_Y_pred_proba = lgb_model.predict_proba(X_val)
+        lgb_custom_score = get_all_scores(Y_val, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
+        wandb.log(convert_scores_to_dict(lgb_custom_score))
+
+        lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
+        # lgb_cv_result_table = wandb.Table(dataframe=lgb_cv_result_df)
+        lgb_cv_result_artifact = wandb.Artifact("lgb_cv_result_artifact_" + epoch_str, type="cv_result")
+        # lgb_cv_result_artifact.add(lgb_cv_result_table, "lgb_cv_result_table_" + epoch_str)
+        lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
+        lgb_cv_result_df.to_csv(lgb_cv_file_name)
+        lgb_cv_result_artifact.add_file(lgb_cv_file_name)
+        wandb.log_artifact(lgb_cv_result_artifact)
+
+        wandb.finish()
+        lgb_score = lgb_custom_score.get_default_metric()
+    
+    logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
+    return lgb_result, lgb_score
 
 
 # def flip_true_false(y):
@@ -712,7 +866,7 @@ def fit_multiple_models(x_train_df: pd.Series, y_train_df: pd.Series, inner_cv: 
 #     flipped_y = [0 if item == 1 else 1 for item in copy_y]
 #     return flipped_y
 
-
+@workflow
 def work():
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
@@ -725,7 +879,6 @@ def work():
     wandb.finish()
 
     try:
-
         # csv_path = '/root'
         csv_path = "."
 
@@ -758,11 +911,11 @@ def work():
         wandb.init(project="thesis-test")
         wandb.alert(title="Complete", text="Your run is complete. Check the board.")
         wandb.finish()
-        
+
     except Exception as error:
         logging.info("MAIN: %s", "ERROR: some error happened, could not finish.")
         logging.info("MAIN: %s", error)
-        
+
         wandb.init(project="thesis-test")
         wandb.alert(title="Error", text="Your run was interrupted by some exception.")
         wandb.finish()

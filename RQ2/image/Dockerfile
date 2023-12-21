@@ -17,6 +17,10 @@ COPY ./requirements.txt .
 
 RUN pip install -r requirements.txt
 
+COPY ./x_train_val.pickle .
+COPY ./y_train_val.pickle .
+COPY ./x_test.pickle .
+COPY ./y_test.pickle .
 COPY ./script.py .
 COPY ./rq2_vosoughi_False_features.csv .
 COPY ./rq2_vosoughi_True_features.csv .
