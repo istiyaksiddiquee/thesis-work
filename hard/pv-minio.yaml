@@ -13,3 +13,18 @@ spec:
   hostPath:
     path: /var/lib/flyte/storage/minio
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: flyte
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+  volumeMode: Filesystem
+  volumeName: flyte-minio-storage
+---
