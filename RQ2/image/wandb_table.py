@@ -5,15 +5,16 @@ import os
 import wandb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import pickle
 
 os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
 os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
-os.environ["WANDB_PROJECT"] = "test-1"
+os.environ["WANDB_PROJECT"] = "thesis"
 
 # run = wandb.init(project="test-1", job_type="demo_run_2")
 
 wandb.init(project="thesis")
-wandb.alert(title="High Loss", text="Loss is increasing rapidly")
+# wandb.alert(title="High Loss", text="Loss is increasing rapidly")
 
 # with wandb.init() as run:
 #     run.log({"a": 1, "b": 2})
@@ -26,11 +27,11 @@ wandb.alert(title="High Loss", text="Loss is increasing rapidly")
 
 
 # clf = svm.SVC()
-X, y = datasets.load_iris(return_X_y=True)
+# X, y = datasets.load_iris(return_X_y=True)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.15, random_state=7
-)
+# X_train, X_test, y_train, y_test = train_test_split(
+#     X, y, test_size=0.15, random_state=7
+# )
 
 # clf.fit(X_train, y_train)
 
@@ -60,14 +61,20 @@ X_train, X_test, y_train, y_test = train_test_split(
 # # # # Save the artifact
 # run.log_artifact(artifact)
 
-# model_at = run.use_artifact("recommender_model:latest")
-# model_dir = model_at.download()
+model_at = wandb.use_artifact("Logistic-Model:latest")
+model_dir = model_at.download()
 # print("model: ", os.path.join(model_dir, "clf.joblib"))
-# model = load(os.path.join(model_dir, "clf.joblib"))
+model = load(os.path.join(model_dir, "logit.joblib"))
 
-# y_pred = model.predict(X_test)
+with open("./x_test.pickle", "rb") as file:
+    X_test = pickle.load(file)
 
-# print(accuracy_score(y_test, y_pred))
+with open("./y_test.pickle", "rb") as file:
+    y_test = pickle.load(file)
+
+y_pred = model.predict(X_test)
+
+print(accuracy_score(y_test, y_pred))
 
 # # # Finish the run
 # run.finish()

@@ -37,11 +37,12 @@ import lightgbm as lgb
 from typing import Dict, Any
 import pickle
 import logging
-# from flytekit import task, workflow, dynamic, ImageSpec, Resources
-# import smote_variants as sv
+from flytekit import task, workflow, dynamic
+import smote_variants as sv
 import warnings
 warnings.filterwarnings("ignore")
 
+wandb_project = "test01"
 random_state = 7
 no_of_active_features = 15
 optimization_metric = "average_precision_score"
@@ -145,18 +146,34 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
+    wandb.init(project=wandb_project)
+
     with open("./x_train_val.pickle", "rb") as file:
+        x_train_val_artifact = wandb.Artifact("x_train_val.pickle", type="dataset")
+        x_train_val_artifact.add_file(file)
+        wandb.log_artifact(x_train_val_artifact)
         X_train_val = pickle.load(file)
 
     with open("./y_train_val.pickle", "rb") as file:
+        y_train_val_artifact = wandb.Artifact("y_train_val.pickle", type="dataset")
+        y_train_val_artifact.add_file(file)
+        wandb.log_artifact(y_train_val_artifact)
         y_train_val = pickle.load(file)
 
     with open("./x_test.pickle", "rb") as file:
+        x_test_artifact = wandb.Artifact("x_test.pickle", type="dataset")
+        x_test_artifact.add_file(file)
+        wandb.log_artifact(x_test_artifact)
         X_test = pickle.load(file)
 
     with open("./y_test.pickle", "rb") as file:
+        y_test_artifact = wandb.Artifact("y_test.pickle", type="dataset")
+        y_test_artifact.add_file(file)
+        wandb.log_artifact(y_test_artifact)
         y_test = pickle.load(file)
 
+    wandb.finish()
+    
     return X_train_val, X_test, y_train_val, y_test
 
 
@@ -177,7 +194,7 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-# @dynamic(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     start = time()
 
@@ -306,7 +323,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         logistic = LogisticRegression(**trained_logit_model.get_params())
         refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="logit", job_type="final")
+        wandb.init(project=wandb_project, group="logit", job_type="final")
         joblib.dump(refit_logit, "logit.joblib")
         logit_artifact = wandb.Artifact(
             "Logistic-Model",
@@ -327,7 +344,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         dt = DecisionTreeClassifier(**trained_dt_model.get_params())
         refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="dt", job_type="final")
+        wandb.init(project=wandb_project, group="dt", job_type="final")
         joblib.dump(refit_dt, "dt.joblib")
         dt_artifact = wandb.Artifact(
             "DT-Model",
@@ -348,7 +365,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         rf = RandomForestClassifier(**trained_rf_model.get_params())
         refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="rf", job_type="final")
+        wandb.init(project=wandb_project, group="rf", job_type="final")
         joblib.dump(refit_rf, "rf.joblib")
         rf_artifact = wandb.Artifact(
             "RF-Model",
@@ -369,7 +386,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         svm = LogisticRegression(**trained_svc_model.get_params())
         refit_svm = svm.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="svc", job_type="final")
+        wandb.init(project=wandb_project, group="svc", job_type="final")
         joblib.dump(refit_svm, "svc.joblib")
         svc_artifact = wandb.Artifact(
             "SVC-Model",
@@ -391,7 +408,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         xgboost = xgboost.set_params(**trained_xgb_model.get_xgb_params())
         refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="xgb", job_type="final")
+        wandb.init(project=wandb_project, group="xgb", job_type="final")
         joblib.dump(refit_xgb, "xgb.joblib")
         xgb_artifact = wandb.Artifact(
             "XGB-Model",
@@ -413,7 +430,7 @@ def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
         lgb_model = lgb_model.set_params(**trained_lgb_model.get_params())
         refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-        wandb.init(project="thesis", group="lgb", job_type="final")
+        wandb.init(project=wandb_project, group="lgb", job_type="final")
         joblib.dump(refit_lgb, "lgb.joblib")
         lgb_artifact = wandb.Artifact(
             "LGB-Model",
@@ -462,7 +479,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> Any:
@@ -505,7 +522,7 @@ def fit_logistic_model(
 
     if logit_result != None:
         logit_model = logit_result.best_estimator_
-        wandb.init(project="thesis", group="logit", job_type=epoch_str)
+        wandb.init(project=wandb_project, group="logit", job_type=epoch_str)
 
         logit_Y_pred = logit_model.predict(X_val)
         logit_Y_pred_proba = logit_model.predict_proba(X_val)
@@ -528,7 +545,7 @@ def fit_logistic_model(
     return (logit_result, logit_score)
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Decision Tree
 
@@ -566,7 +583,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     if dt_result != None:
         dt_model = dt_result.best_estimator_
-        wandb.init(project="thesis", group="dt", job_type=epoch_str)
+        wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
         dt_Y_pred = dt_model.predict(X_val)
         dt_Y_pred_proba = dt_model.predict_proba(X_val)
         dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba[:, 1])
@@ -588,7 +605,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (dt_result, dt_score)
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # SVC
 
@@ -630,7 +647,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     if svc_result != None:
         svc_model = svc_result.best_estimator_
 
-        wandb.init(project="thesis", group="svc", job_type=epoch_str)
+        wandb.init(project=wandb_project, group="svc", job_type=epoch_str)
         svc_Y_pred = svc_model.predict(X_val)
         svc_Y_pred_proba = svc_model.predict_proba(X_val)
         svc_custom_score = get_all_scores(Y_val, svc_Y_pred, svc_Y_pred_proba[:, 1])
@@ -653,7 +670,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (svc_result, svc_score)
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Random Forest
 
@@ -691,7 +708,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     if rf_result != None:
         rf_model = rf_result.best_estimator_
 
-        wandb.init(project="thesis", group="rf", job_type=epoch_str)
+        wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
         rf_Y_pred = rf_model.predict(X_val)
         rf_Y_pred_proba = rf_model.predict_proba(X_val)
         rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba[:, 1])
@@ -714,7 +731,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (rf_result, rf_score)
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # XGB
 
@@ -724,14 +741,14 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     xgb_score = None
     try:
         # XGB
-        # xgb_grid = {
-        #     "colsample_bytree": [0.7],
-        # }
         xgb_grid = {
-            # "n_estimators": range(60, 220, 40),
-            "learning_rate": [0.1, 0.01, 0.05],
-            "booster": ["gbtree", "gblinear", "dart"],
+            "learning_rate": [0.1],
         }
+        # xgb_grid = {
+        #     # "n_estimators": range(60, 220, 40),
+        #     "learning_rate": [0.1, 0.01, 0.05],
+        #     "booster": ["gbtree", "gblinear", "dart"],
+        # }
 
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
@@ -755,7 +772,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         try:
             xgb_model = xgb_result.best_estimator_
 
-            wandb.init(project="thesis", group="xgb", job_type=epoch_str)
+            wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
             xgb_Y_pred = xgb_model.predict(X_val)
             xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
             xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
@@ -781,7 +798,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (xgb_result, xgb_score)
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:4.0.0")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # LGB
 
@@ -822,7 +839,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     if lgb_result != None:
         lgb_model = lgb_result.best_estimator_
-        wandb.init(project="thesis", group="lgb", job_type=epoch_str)
+        wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
 
         lgb_Y_pred = lgb_model.predict(X_val)
         lgb_Y_pred_proba = lgb_model.predict_proba(X_val)
@@ -851,7 +868,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 #     return flipped_y
 
 
-# @workflow
+@workflow
 def work():
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
@@ -859,7 +876,7 @@ def work():
     # FORMAT = '%(asctime)-15s %(message)s'
     logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
 
-    wandb.init(project="thesis")
+    wandb.init(project=wandb_project)
     wandb.alert(title="Started", text="Your run has started. Mark the time.")
     wandb.finish()
 
@@ -893,7 +910,7 @@ def work():
         logging.info("WORK: %s", "entering nested loop")
         nested_loop(X_train_val=X_train_val, y_train_val=y_train_val)
 
-        # wandb.init(project="thesis")
+        # wandb.init(project=wandb_project)
         # wandb.alert(title="Complete", text="Your run is complete. Check the board.")
         # wandb.finish()
 
@@ -901,7 +918,7 @@ def work():
         logging.info("MAIN: %s", "ERROR: some error happened, could not finish.")
         logging.info("MAIN: %s", error)
 
-        wandb.init(project="thesis")
+        wandb.init(project=wandb_project)
         wandb.alert(title="Error", text="Your run was interrupted by some exception.")
         wandb.finish()
 

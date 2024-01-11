@@ -1,4 +1,4 @@
-FROM python:3.10-slim-buster
+FROM python:3.11.7-slim-bookworm
 
 WORKDIR /work
 USER root 
