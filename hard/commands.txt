@@ -1,1 +1,5 @@
+kubectl create ns flyte
+kubectl create -n flyte -f pgdb.yaml
+kubectl create -n flyte -f minio.yaml
+helm repo add flyteorg https://flyteorg.github.io/flyte
 helm install flyte-binary flyteorg/flyte-binary  --values local-values.yaml -n flyte

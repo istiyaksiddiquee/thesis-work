@@ -198,7 +198,7 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def nested_loop(X_train_val: pd.DataFrame, y_train_val: pd.Series) -> None:
     start = time()
 
@@ -483,7 +483,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> Any:
@@ -549,7 +549,7 @@ def fit_logistic_model(
     return (logit_result, logit_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Decision Tree
 
@@ -609,7 +609,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (dt_result, dt_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # SVC
 
@@ -674,7 +674,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (svc_result, svc_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Random Forest
 
@@ -735,7 +735,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (rf_result, rf_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # XGB
 
@@ -802,7 +802,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (xgb_result, xgb_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test01")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test02")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # LGB
 
