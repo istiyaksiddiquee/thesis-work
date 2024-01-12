@@ -149,28 +149,32 @@ def read_pickled_input_files(file_path: str):
     wandb.init(project=wandb_project)
 
     with open("./x_train_val.pickle", "rb") as file:
-        x_train_val_artifact = wandb.Artifact("x_train_val.pickle", type="dataset")
-        x_train_val_artifact.add_file(file)
-        wandb.log_artifact(x_train_val_artifact)
         X_train_val = pickle.load(file)
+        joblib.dump(X_train_val, "x_train_val.joblib")
+        x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
+        x_train_val_artifact.add_file("x_train_val.joblib")
+        wandb.log_artifact(x_train_val_artifact)
 
     with open("./y_train_val.pickle", "rb") as file:
-        y_train_val_artifact = wandb.Artifact("y_train_val.pickle", type="dataset")
-        y_train_val_artifact.add_file(file)
-        wandb.log_artifact(y_train_val_artifact)
         y_train_val = pickle.load(file)
+        joblib.dump(y_train_val, "y_train_val.joblib")
+        y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
+        y_train_val_artifact.add_file("y_train_val.joblib")
+        wandb.log_artifact(y_train_val_artifact)
 
     with open("./x_test.pickle", "rb") as file:
-        x_test_artifact = wandb.Artifact("x_test.pickle", type="dataset")
-        x_test_artifact.add_file(file)
-        wandb.log_artifact(x_test_artifact)
         X_test = pickle.load(file)
+        joblib.dump(X_test, "x_test.joblib")
+        x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
+        x_test_artifact.add_file("x_test.joblib")
+        wandb.log_artifact(x_test_artifact)
 
     with open("./y_test.pickle", "rb") as file:
-        y_test_artifact = wandb.Artifact("y_test.pickle", type="dataset")
-        y_test_artifact.add_file(file)
-        wandb.log_artifact(y_test_artifact)
         y_test = pickle.load(file)
+        joblib.dump(y_test, "y_test.joblib")
+        y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
+        y_test_artifact.add_file("y_test.joblib")
+        wandb.log_artifact(y_test_artifact)
 
     wandb.finish()
     
