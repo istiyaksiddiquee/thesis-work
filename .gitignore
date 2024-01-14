@@ -4,3 +4,4 @@ RQ2/image/rq2_vosoughi_False_features.csv
 RQ2/image/rq2_vosoughi_True_features.csv
 RQ2/image/__pycache__/
 hard/__pycache__/
+flyte-base/flyte-env
