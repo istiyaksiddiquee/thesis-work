@@ -34,7 +34,7 @@ import numpy as np
 import wandb
 import joblib
 import lightgbm as lgb
-from typing import Dict, Any
+from typing import Dict, Any, List
 import pickle
 import logging
 from flytekit import task, workflow, dynamic
@@ -70,6 +70,14 @@ class CustomScore:
 
     def get_default_metric(self) -> float:
         return self.avg_precision
+
+class OutputClass:            
+    def __init__(self, logit, dt, rf, xgb, lgb) -> None:
+        self.logit = logit
+        self.dt = dt
+        self.rf = rf
+        self.xgb = xgb
+        self.lgb = lgb
 
 
 def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
@@ -148,28 +156,28 @@ def read_pickled_input_files(file_path: str):
 
     # wandb.init(project=wandb_project)
 
-    with open("./x_train_val.pickle", "rb") as file:
+    with open(file_path + "/x_train_val.pickle", "rb") as file:
         X_train_val = pickle.load(file)
         # joblib.dump(X_train_val, "x_train_val.joblib")
         # x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
         # x_train_val_artifact.add_file("x_train_val.joblib")
         # wandb.log_artifact(x_train_val_artifact)
 
-    with open("./y_train_val.pickle", "rb") as file:
+    with open(file_path + "/y_train_val.pickle", "rb") as file:
         y_train_val = pickle.load(file)
         # joblib.dump(y_train_val, "y_train_val.joblib")
         # y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
         # y_train_val_artifact.add_file("y_train_val.joblib")
         # wandb.log_artifact(y_train_val_artifact)
 
-    with open("./x_test.pickle", "rb") as file:
+    with open(file_path + "/x_test.pickle", "rb") as file:
         X_test = pickle.load(file)
         # joblib.dump(X_test, "x_test.joblib")
         # x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
         # x_test_artifact.add_file("x_test.joblib")
         # wandb.log_artifact(x_test_artifact)
 
-    with open("./y_test.pickle", "rb") as file:
+    with open(file_path + "/y_test.pickle", "rb") as file:
         y_test = pickle.load(file)
         # joblib.dump(y_test, "y_test.joblib")
         # y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
@@ -198,21 +206,112 @@ def filter_and_split_df(df: pd.DataFrame):
     return X_train_val, X_test, y_train_val, y_test
 
 
-@dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@workflow
 def nested_loop() -> None:
 
-    start = time()
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
-    X_train_val = None
-    y_train_val = None
-    
-    with open("/root/workflows/x_train_val.pickle", "rb") as x_train_pickle:
-        X_train_val = pickle.load(x_train_pickle)
-        
-    with open("/root/workflows/y_train_val.pickle", "rb") as y_train_pickle:
-        y_train_val = pickle.load(y_train_pickle)
+    # FORMAT = '%(asctime)-15s %(message)s'
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
 
-    outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
+    try:
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Started", text="Your run has started. Mark the time.")
+        # wandb.finish()
+
+        start = time()
+
+        logging.info("WORK: %s", "initiating processing, reading files")
+        csv_path = "."
+        X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
+
+        # call the nested loop to get all the trained models
+        logging.info("WORK: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
+
+        logging.info("WORK: %s", "entering nested loop")
+
+        outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
+
+        loop_index = 0
+
+        logging.info("NESTED_LOOP: %s", "loop starts")
+
+        loop_outputs = []
+
+        for train_index, val_index in outer_cv.split(X_train_val.to_numpy()):
+
+            loop_index += 1
+            epoch_str = "epoch_" + str(loop_index)
+
+            logging.info("NESTED_LOOP: %s", f"inside loop epoch {loop_index}")
+
+            X_train, X_val = (X_train_val.iloc[train_index, :], X_train_val.iloc[val_index, :])
+
+            y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
+
+            logging.info("NESTED_LOOP: %s", "feature scaling")
+            normalized_df = copy(X_train)
+            cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+            cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+            normalized_df["depth"] = np.log(normalized_df["depth"])
+            normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+            # normalized_df["size"] = np.log(normalized_df["size"])
+            # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+            normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+
+            scaler = StandardScaler().set_output(transform="pandas")
+            scaled_X_train = scaler.fit_transform(normalized_df)
+            scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
+
+            inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
+
+            logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
+
+            logit_output = fit_logistic_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            dt_output = fit_dt_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            
+            rf_output = fit_rf_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            xgb_output = fit_xgb_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            lgb_output = fit_lgb_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            loop_outputs.append(OutputClass(logit_output, dt_output, rf_output, xgb_output, lgb_output))
+            logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
+
+        logging.info("NESTED_LOOP: %s", f"loop_outputs has {len(loop_outputs)} items.")
+        refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
+        end = time()
+        time_taken = str(end - start)
+        logging.info("NESTED_LOOP: %s", f"{epoch_str} re-fitting logging compelte, end of epoch. it took {time_taken} seconds")
+
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Complete", text="Your run is complete. Check the board.")
+        # wandb.finish()
+
+    except Exception as error:
+        logging.info("MAIN: %s", "ERROR: some error happened, could not finish.")
+        logging.info("MAIN: %s", error)
+
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Error", text="Your run was interrupted by some exception.")
+        # wandb.finish()
+    return
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
+def refitting_models(
+    loop_outputs: list[OutputClass],
+    X_train_val: pd.Series,
+    y_train_val: pd.Series
+) -> None:
 
     logit_epoch_id = -1
     dt_epoch_id = -1
@@ -235,57 +334,15 @@ def nested_loop() -> None:
     trained_xgb_model = None
     trained_lgb_model = None
 
-    loop_index = 0
+    for loop_item in loop_outputs:
 
-    logging.info("NESTED_LOOP: %s", "loop starts")
-
-    for train_index, val_index in outer_cv.split(X_train_val.to_numpy()):
-        loop_index += 1
-        epoch_str = "epoch_" + str(loop_index)
-
-        logging.info("NESTED_LOOP: %s", f"inside loop epoch {loop_index}")
-
-        X_train, X_val = (X_train_val.iloc[train_index, :], X_train_val.iloc[val_index, :])
-
-        y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
-
-        logging.info("NESTED_LOOP: %s", "feature scaling")
-        normalized_df = copy(X_train)
-        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        normalized_df["depth"] = np.log(normalized_df["depth"])
-        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        # normalized_df["size"] = np.log(normalized_df["size"])
-        # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
-        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-
-        scaler = StandardScaler().set_output(transform="pandas")
-        scaled_X_train = scaler.fit_transform(normalized_df)
-        scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
-
-        inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
-
-        logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
-
-        logit_result, logit_score = fit_logistic_model(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-        )
-        dt_result, dt_score = fit_dt_model(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-        )
-        # svc_result, svc_score = fit_svc_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
-        rf_result, rf_score = fit_rf_model(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-        )
-        xgb_result, xgb_score = fit_xgb_model(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-        )
-        lgb_result, lgb_score = fit_lgb_model(
-            x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-        )
-
-        logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
-
+        logit_output, dt_output, rf_output, xgb_output, lgb_output = loop_item
+        logit_result, logit_score = logit_output
+        dt_result, dt_score = dt_output
+        rf_result, rf_score = rf_output
+        xgb_result, xgb_score = xgb_output
+        lgb_result, lgb_score = lgb_output
+    
         if logit_result != None and logit_avg_prec < logit_score:
             logit_avg_prec = logit_score
             trained_logit_model = logit_result.best_estimator_
@@ -295,11 +352,6 @@ def nested_loop() -> None:
             dt_avg_prec = dt_score
             trained_dt_model = dt_result.best_estimator_
             dt_epoch_id = loop_index
-
-        # if svc_result != None and svc_avg_prec < svc_score:
-        #     svc_avg_prec = svc_score
-        #     trained_svc_model = svc_result.best_estimator_
-        #     svc_epoch_id = loop_index
 
         if rf_result != None and rf_avg_prec < rf_score:
             rf_avg_prec = rf_score
@@ -316,7 +368,7 @@ def nested_loop() -> None:
             trained_lgb_model = lgb_result.best_estimator_
             lgb_epoch_id = loop_index
 
-    logging.info("NESTED_LOOP: %s", f"{epoch_str} logging complete, re-fitting starts")
+    logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
     normalized_df = copy(X_train_val)
     cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
     cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
@@ -460,16 +512,42 @@ def nested_loop() -> None:
         wandb.log_artifact(lgb_artifact)
         wandb.finish()
 
-    # joblib.dump(refit_dt, "decision_tree")
-    # joblib.dump(refit_rf, "random_forest")
-    # joblib.dump(refit_logit, "logistic")
-    # joblib.dump(refit_xgb, "xgboost")
-
-    end = time()
-    time_taken = str(end - start)
-    logging.info("NESTED_LOOP: %s", f"{epoch_str} re-fitting logging compelte, end of epoch. it took {time_taken} seconds")
     return
 
+# @dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test10")
+# def fit_multiple_models(
+#     scaled_resampled_X_train: any, 
+#     scaled_resampled_y_train: any,
+#     X_val: any, 
+#     Y_val: any,
+#     inner_cv: any, 
+#     epoch_str: str
+# ):
+#     # logit_result, logit_score
+#     # dt_result, dt_score
+#     # rf_result, rf_score
+#     # xgb_result, xgb_score
+#     # lgb_result, lgb_score
+#     # logit_output, dt_output, rf_output, xgb_output, lgb_output
+
+#     logit_output = fit_logistic_model(
+#             x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+#         )
+#     dt_output = fit_dt_model(
+#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+#     )
+#     # svc_result, svc_score = fit_svc_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
+#     rf_output = fit_rf_model(
+#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+#     )
+#     xgb_output = fit_xgb_model(
+#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+#     )
+#     lgb_output = fit_lgb_model(
+#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+#     )
+
+#     return logit_output, dt_output, rf_output, xgb_output, lgb_output
 
 def oversample_data(X: pd.Series, y: pd.Series):
     # oversampler = sv.polynom_fit_SMOTE_poly()
@@ -493,7 +571,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> Any:
@@ -559,7 +637,7 @@ def fit_logistic_model(
     return (logit_result, logit_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Decision Tree
 
@@ -619,7 +697,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (dt_result, dt_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # SVC
 
@@ -684,7 +762,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (svc_result, svc_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # Random Forest
 
@@ -745,7 +823,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return (rf_result, rf_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # XGB
 
@@ -812,7 +890,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return (xgb_result, xgb_score)
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test06")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
     # LGB
 
@@ -882,60 +960,5 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 #     return flipped_y
 
 
-@workflow
-def work():
-    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
-    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
-
-    # FORMAT = '%(asctime)-15s %(message)s'
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
-
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    wandb.finish()
-
-    try:
-        # csv_path = '/root'
-        csv_path = "."
-
-        # df = read_files(csv_path)
-        # X_train_val, X_test, y_train_val, y_test = filter_and_split_df(df)
-        # logging.info("WORK: %s", "filtering and splitting data")
-
-        # logging.info("WORK: %s", "storing splits")
-        # with open("./x_train_val.pickle", "wb") as file:
-        #     pickle.dump(X_train_val, file)
-
-        # with open("./y_train_val.pickle", "wb") as file:
-        #     pickle.dump(y_train_val, file)
-
-        # with open("./x_test.pickle", "wb") as file:
-        #     pickle.dump(X_test, file)
-
-        # with open("./y_test.pickle", "wb") as file:
-        #     pickle.dump(y_test, file)
-
-        logging.info("WORK: %s", "initiating processing, reading files")
-        X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
-
-        # call the nested loop to get all the trained models
-        logging.info("WORK: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
-
-        logging.info("WORK: %s", "entering nested loop")
-        nested_loop()
-
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Complete", text="Your run is complete. Check the board.")
-        # wandb.finish()
-
-    except Exception as error:
-        logging.info("MAIN: %s", "ERROR: some error happened, could not finish.")
-        logging.info("MAIN: %s", error)
-
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Error", text="Your run was interrupted by some exception.")
-        wandb.finish()
-
-
 if __name__ == "__main__":
-    work()
+    nested_loop()
