@@ -286,9 +286,21 @@ def nested_loop() -> None:
             )
             loop_outputs.append(OutputClass(logit_output, dt_output, rf_output, xgb_output, lgb_output))
             logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
+            logit_output >> refitt
+            dt_output >> refitt
+            rf_output >> refitt
+            xgb_output >> refitt
+            lgb_output >> refitt
 
         logging.info("NESTED_LOOP: %s", f"loop_outputs has {len(loop_outputs)} items.")
-        refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
+        refitt = refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
+
+        logit_output >> refitt
+        dt_output >> refitt
+        rf_output >> refitt
+        xgb_output >> refitt
+        lgb_output >> refitt
+
         end = time()
         time_taken = str(end - start)
         logging.info("NESTED_LOOP: %s", f"{epoch_str} re-fitting logging compelte, end of epoch. it took {time_taken} seconds")
@@ -336,7 +348,12 @@ def refitting_models(
 
     for loop_item in loop_outputs:
 
-        logit_output, dt_output, rf_output, xgb_output, lgb_output = loop_item
+        logit_output = loop_item.logit
+        dt_output = loop_item.dt
+        rf_output = loop_item.rf
+        xgb_output = loop_item.xgb
+        lgb_output = loop_item.lgb
+
         logit_result, logit_score = logit_output
         dt_result, dt_score = dt_output
         rf_result, rf_score = rf_output
@@ -513,41 +530,6 @@ def refitting_models(
         wandb.finish()
 
     return
-
-# @dynamic(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-# def fit_multiple_models(
-#     scaled_resampled_X_train: any, 
-#     scaled_resampled_y_train: any,
-#     X_val: any, 
-#     Y_val: any,
-#     inner_cv: any, 
-#     epoch_str: str
-# ):
-#     # logit_result, logit_score
-#     # dt_result, dt_score
-#     # rf_result, rf_score
-#     # xgb_result, xgb_score
-#     # lgb_result, lgb_score
-#     # logit_output, dt_output, rf_output, xgb_output, lgb_output
-
-#     logit_output = fit_logistic_model(
-#             x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-#         )
-#     dt_output = fit_dt_model(
-#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-#     )
-#     # svc_result, svc_score = fit_svc_model(x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str)
-#     rf_output = fit_rf_model(
-#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-#     )
-#     xgb_output = fit_xgb_model(
-#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-#     )
-#     lgb_output = fit_lgb_model(
-#         x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-#     )
-
-#     return logit_output, dt_output, rf_output, xgb_output, lgb_output
 
 def oversample_data(X: pd.Series, y: pd.Series):
     # oversampler = sv.polynom_fit_SMOTE_poly()

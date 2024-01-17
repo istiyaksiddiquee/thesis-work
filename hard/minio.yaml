@@ -39,13 +39,13 @@ spec:
           requests:
             cpu: 10m
             memory: 128Mi
-      #   volumeMounts:
-      #   - name: minio-storage
-      #     mountPath: /data
-      # volumes:
-      # - name: minio-storage
-      #   persistentVolumeClaim:
-      #     claimName: minio-pvc
+        volumeMounts:
+        - name: minio-storage
+          mountPath: /data
+      volumes:
+      - name: minio-storage
+        persistentVolumeClaim:
+          claimName: minio-pvc
 ---
 apiVersion: v1
 kind: Service
