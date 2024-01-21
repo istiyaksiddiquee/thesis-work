@@ -532,18 +532,19 @@ def refitting_models(
     return
 
 def oversample_data(X: pd.Series, y: pd.Series):
-    # oversampler = sv.polynom_fit_SMOTE_poly()
-    # X_samp, y_samp = oversampler.sample(X, y)
-    # X_samp, y_samp = pd.DataFrame(X_samp), pd.Series(y_samp)
+    
+    oversampler = sv.polynom_fit_SMOTE_poly()
+    X_samp, y_samp = oversampler.sample(X, y)
+    X_samp, y_samp = pd.DataFrame(X_samp), pd.Series(y_samp)
 
-    smotetomek = SMOTETomek(
-        smote=SMOTE(sampling_strategy="all"),
-        tomek=TomekLinks(
-            sampling_strategy="majority",
-        ),
-        random_state=random_state,
-    )
-    X_samp, y_samp = smotetomek.fit_resample(X, y)
+    # smotetomek = SMOTETomek(
+    #     smote=SMOTE(sampling_strategy="all"),
+    #     tomek=TomekLinks(
+    #         sampling_strategy="majority",
+    #     ),
+    #     random_state=random_state,
+    # )
+    # X_samp, y_samp = smotetomek.fit_resample(X, y)
     return X_samp, y_samp
 
 

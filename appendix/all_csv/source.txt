@@ -1,0 +1,5 @@
+https://sci2s.ugr.es/keel/imbalanced.php?order=ins#sub20
+collected from smote variants paper. they also used similar datasets from this repository
+https://github.com/analyticalmindsltd/smote_variants
+
+also use the covid dataset
