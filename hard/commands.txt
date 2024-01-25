@@ -16,6 +16,8 @@ cd /var/lib/flyte
 kubectl delete -n flyte -f minio.yaml
 kubectl delete -n flyte -f pv-minio.yaml
 kubectl delete -n flyte -f pgdb.yaml
+helm -n flyte uninstall flyte-binary
+helm -n flyte uninstall kubernetes-dashboard
 kubectl delete ns flyte
 
 
