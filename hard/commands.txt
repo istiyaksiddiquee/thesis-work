@@ -19,3 +19,5 @@ kubectl delete -n flyte -f pgdb.yaml
 kubectl delete ns flyte
 
 
+sudo docker build -t istiyaksiddiquee/flyte-for-kube:test13 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test13" .
+sudo docker push istiyaksiddiquee/flyte-for-kube:test13

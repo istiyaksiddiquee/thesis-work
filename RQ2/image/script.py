@@ -79,6 +79,10 @@ class OutputClass:
         self.xgb = xgb
         self.lgb = lgb
 
+class CLFOutput:
+    def __init__(self, gridsearch_dict: dict, score: float) -> None:
+        self.gridsearch_dict = gridsearch_dict
+        self.score = score 
 
 def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
     accuracy = accuracy_score(y_real, y_pred)
@@ -207,7 +211,7 @@ def filter_and_split_df(df: pd.DataFrame):
 
 
 @workflow
-def nested_loop() -> None:
+def nested_loop() -> list[OutputClass]:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
@@ -274,10 +278,10 @@ def nested_loop() -> None:
             dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
-            
-            rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            )
+            rf_output = None
+            # rf_output = fit_rf_model(
+            #     x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            # )
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
@@ -286,20 +290,10 @@ def nested_loop() -> None:
             )
             loop_outputs.append(OutputClass(logit_output, dt_output, rf_output, xgb_output, lgb_output))
             logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
-            logit_output >> refitt
-            dt_output >> refitt
-            rf_output >> refitt
-            xgb_output >> refitt
-            lgb_output >> refitt
+            
 
         logging.info("NESTED_LOOP: %s", f"loop_outputs has {len(loop_outputs)} items.")
-        refitt = refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
-
-        logit_output >> refitt
-        dt_output >> refitt
-        rf_output >> refitt
-        xgb_output >> refitt
-        lgb_output >> refitt
+        # refitt = refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
 
         end = time()
         time_taken = str(end - start)
@@ -316,74 +310,80 @@ def nested_loop() -> None:
         # wandb.init(project=wandb_project)
         # wandb.alert(title="Error", text="Your run was interrupted by some exception.")
         # wandb.finish()
-    return
+    return loop_outputs
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
+@workflow
+def main_wf():
+    loop_outputs = nested_loop()
+    refitt = refitting_models(loop_outputs=loop_outputs)
+    loop_outputs >> refitt
+
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
 def refitting_models(
-    loop_outputs: list[OutputClass],
-    X_train_val: pd.Series,
-    y_train_val: pd.Series
+    loop_outputs: any
 ) -> None:
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+
+    csv_path = "."
+    X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
+
+    loop_counter = 0
 
     logit_epoch_id = -1
     dt_epoch_id = -1
     rf_epoch_id = -1
-    svc_epoch_id = -1
     xgb_epoch_id = -1
     lgb_epoch_id = -1
 
     logit_avg_prec = 0
     dt_avg_prec = 0
     rf_avg_prec = 0
-    svc_avg_prec = 0
     xgb_avg_prec = 0
     lgb_avg_prec = 0
 
     trained_dt_model = None
     trained_rf_model = None
-    trained_svc_model = None
     trained_logit_model = None
     trained_xgb_model = None
     trained_lgb_model = None
 
     for loop_item in loop_outputs:
 
-        logit_output = loop_item.logit
-        dt_output = loop_item.dt
-        rf_output = loop_item.rf
-        xgb_output = loop_item.xgb
-        lgb_output = loop_item.lgb
-
-        logit_result, logit_score = logit_output
-        dt_result, dt_score = dt_output
-        rf_result, rf_score = rf_output
-        xgb_result, xgb_score = xgb_output
-        lgb_result, lgb_score = lgb_output
+        logit_result = loop_item.logit.gridsearch_dict
+        dt_result = loop_item.dt.gridsearch_dict
+        # rf_result = loop_item.rf.gridsearch_dict
+        xgb_result = loop_item.xgb.gridsearch_dict
+        lgb_result = loop_item.lgb.gridsearch_dict
     
-        if logit_result != None and logit_avg_prec < logit_score:
-            logit_avg_prec = logit_score
-            trained_logit_model = logit_result.best_estimator_
-            logit_epoch_id = loop_index
+        if logit_result != None and logit_avg_prec < loop_item.logit.score:
+            logit_avg_prec = loop_item.logit.score
+            trained_logit_model = logit_result
+            logit_epoch_id = loop_counter
 
-        if dt_result != None and dt_avg_prec < dt_score:
-            dt_avg_prec = dt_score
-            trained_dt_model = dt_result.best_estimator_
-            dt_epoch_id = loop_index
+        if dt_result != None and dt_avg_prec < loop_item.dt.score:
+            dt_avg_prec = loop_item.dt.score
+            trained_dt_model = dt_result
+            dt_epoch_id = loop_counter
 
-        if rf_result != None and rf_avg_prec < rf_score:
-            rf_avg_prec = rf_score
-            trained_rf_model = rf_result.best_estimator_
-            rf_epoch_id = loop_index
+        # if rf_result != None and rf_avg_prec < loop_item.rf.score:
+        #     rf_avg_prec = loop_item.rf.score
+        #     trained_rf_model = rf_result
+            # rf_epoch_id = loop_counter
 
-        if xgb_result != None and xgb_avg_prec < xgb_score:
-            xgb_avg_prec = xgb_score
-            trained_xgb_model = xgb_result.best_estimator_
-            xgb_epoch_id = loop_index
+        if xgb_result != None and xgb_avg_prec < loop_item.xgb.score:
+            xgb_avg_prec = loop_item.xgb.score
+            trained_xgb_model = xgb_result
+            xgb_epoch_id = loop_counter
 
-        if lgb_result != None and lgb_avg_prec < lgb_score:
-            lgb_avg_prec = lgb_score
-            trained_lgb_model = lgb_result.best_estimator_
-            lgb_epoch_id = loop_index
+        if lgb_result != None and lgb_avg_prec < loop_item.lgb.score:
+            lgb_avg_prec = loop_item.lgb.score
+            trained_lgb_model = lgb_result
+            lgb_epoch_id = loop_counter
+        
+        loop_counter += 1
 
     logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
     normalized_df = copy(X_train_val)
@@ -403,7 +403,7 @@ def refitting_models(
 
     if trained_logit_model != None:
         # store logit model
-        logistic = LogisticRegression(**trained_logit_model.get_params())
+        logistic = LogisticRegression(**trained_logit_model)
         refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
         wandb.init(project=wandb_project, group="logit", job_type="final")
@@ -413,7 +413,7 @@ def refitting_models(
             type="model",
             description="selected Logistic model",
             metadata={
-                "parameters": trained_logit_model.get_params(),
+                "parameters": trained_logit_model,
                 "epoch": logit_epoch_id,
             },
         )
@@ -424,7 +424,7 @@ def refitting_models(
 
     if trained_dt_model != None:
         # store dt model
-        dt = DecisionTreeClassifier(**trained_dt_model.get_params())
+        dt = DecisionTreeClassifier(**trained_dt_model)
         refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
         wandb.init(project=wandb_project, group="dt", job_type="final")
@@ -434,7 +434,7 @@ def refitting_models(
             type="model",
             description="selected DT model",
             metadata={
-                "parameters": trained_dt_model.get_params(),
+                "parameters": trained_dt_model,
                 "epoch": dt_epoch_id,
             },
         )
@@ -445,7 +445,7 @@ def refitting_models(
 
     if trained_rf_model != None:
         # store rf model
-        rf = RandomForestClassifier(**trained_rf_model.get_params())
+        rf = RandomForestClassifier(**trained_rf_model)
         refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
         wandb.init(project=wandb_project, group="rf", job_type="final")
@@ -455,7 +455,7 @@ def refitting_models(
             type="model",
             description="selected RF model",
             metadata={
-                "parameters": trained_rf_model.get_params(),
+                "parameters": trained_rf_model,
                 "epoch": rf_epoch_id,
             },
         )
@@ -464,31 +464,10 @@ def refitting_models(
         wandb.log_artifact(rf_artifact)
         wandb.finish()
 
-    if trained_svc_model != None:
-        # store svc model
-        svm = LogisticRegression(**trained_svc_model.get_params())
-        refit_svm = svm.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
-
-        wandb.init(project=wandb_project, group="svc", job_type="final")
-        joblib.dump(refit_svm, "svc.joblib")
-        svc_artifact = wandb.Artifact(
-            "SVC-Model",
-            type="model",
-            description="selected SVC model",
-            metadata={
-                "parameters": trained_svc_model.get_params(),
-                "epoch": svc_epoch_id,
-            },
-        )
-
-        svc_artifact.add_file("svc.joblib")
-        wandb.log_artifact(svc_artifact)
-        wandb.finish()
-
     if trained_xgb_model != None:
         # store xgb model
         xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
-        xgboost = xgboost.set_params(**trained_xgb_model.get_xgb_params())
+        xgboost = xgboost.set_params(**trained_xgb_model)
         refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
         wandb.init(project=wandb_project, group="xgb", job_type="final")
@@ -498,7 +477,7 @@ def refitting_models(
             type="model",
             description="selected XGB model",
             metadata={
-                "parameters": trained_xgb_model.get_params(),
+                "parameters": trained_xgb_model,
                 "epoch": xgb_epoch_id,
             },
         )
@@ -510,7 +489,7 @@ def refitting_models(
     if trained_lgb_model != None:
         # store lgb model
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
-        lgb_model = lgb_model.set_params(**trained_lgb_model.get_params())
+        lgb_model = lgb_model.set_params(**trained_lgb_model)
         refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
         wandb.init(project=wandb_project, group="lgb", job_type="final")
@@ -520,7 +499,7 @@ def refitting_models(
             type="model",
             description="selected LGB model",
             metadata={
-                "parameters": trained_lgb_model.get_params(),
+                "parameters": trained_lgb_model,
                 "epoch": lgb_epoch_id,
             },
         )
@@ -554,16 +533,21 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
-) -> Any:
+) -> CLFOutput:
     # Logistic Regression
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
     logging.info("FIT_LOGIT_MODEL: %s", f"logit run scheduled for {epoch_str}.")
 
     logit_result = None
+    logit_best_grid_param = None
     logit_score = None
+
     try:
         logit_grid = {
             "penalty": ["l2"],
@@ -597,6 +581,7 @@ def fit_logistic_model(
 
     if logit_result != None:
         logit_model = logit_result.best_estimator_
+        logit_best_grid_param = logit_model.get_params()
         wandb.init(project=wandb_project, group="logit", job_type=epoch_str)
 
         logit_Y_pred = logit_model.predict(X_val)
@@ -617,17 +602,23 @@ def fit_logistic_model(
         logit_score = logit_custom_score.get_default_metric()
 
     logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
-    return (logit_result, logit_score)
+    clf_output = CLFOutput(logit_best_grid_param, logit_score)
+
+    return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
     logging.info("FIT_DT_MODEL: %s", f"dt run scheduled for {epoch_str}.")
 
     dt_result = None
     dt_score = None
+    dt_best_grid_param = None
     try:
 
         # dt_grid = {
@@ -658,6 +649,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     if dt_result != None:
         dt_model = dt_result.best_estimator_
+        dt_best_grid_param = dt_model.get_params()
         wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
         dt_Y_pred = dt_model.predict(X_val)
         dt_Y_pred_proba = dt_model.predict_proba(X_val)
@@ -677,17 +669,25 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_score = dt_custom_score.get_default_metric()
 
     logging.info("FIT_DT_MODEL: %s", "dt run completed.")
-    return (dt_result, dt_score)
+    
+    clf_output = CLFOutput(dt_best_grid_param, dt_score)
+
+    return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # SVC
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
     logging.info("FIT_SVC_MODEL: %s", f"svc run scheduled for {epoch_str}.")
 
     svc_result = None
     svc_score = None
+    svc_best_grid_param = None
 
     try:
         # SVC
@@ -721,6 +721,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     if svc_result != None:
         svc_model = svc_result.best_estimator_
+        svc_best_grid_param = svc_model.get_params()
 
         wandb.init(project=wandb_project, group="svc", job_type=epoch_str)
         svc_Y_pred = svc_model.predict(X_val)
@@ -742,17 +743,24 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         svc_score = svc_custom_score.get_default_metric()
 
     logging.info("FIT_SVC_MODEL: %s", "svc run completed.")
-    return (svc_result, svc_score)
 
+    clf_output = CLFOutput(svc_best_grid_param, svc_score)
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
+    return clf_output
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
     logging.info("FIT_RF_MODEL: %s", f"rf run scheduled for {epoch_str}.")
 
     rf_result = None
     rf_score = None
+    rf_best_grid_param = None
+
     try:
         rf_grid = {"criterion": ["gini"]}
 
@@ -782,7 +790,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     if rf_result != None:
         rf_model = rf_result.best_estimator_
-
+        rf_best_grid_param = rf_model.get_params()
         wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
         rf_Y_pred = rf_model.predict(X_val)
         rf_Y_pred_proba = rf_model.predict_proba(X_val)
@@ -803,17 +811,25 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_score = rf_custom_score.get_default_metric()
 
     logging.info("FIT_RF_MODEL: %s", "rf run completed.")
-    return (rf_result, rf_score)
+
+    clf_output = CLFOutput(rf_best_grid_param, rf_score)
+
+    return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
 
     logging.info("FIT_XGB_MODEL: %s", f"xgb run scheduled for {epoch_str}.")
 
     xgb_result = None
     xgb_score = None
+    xgb_best_grid_param = None
+
     try:
         # XGB
         xgb_grid = {
@@ -846,7 +862,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     if xgb_result != None:
         try:
             xgb_model = xgb_result.best_estimator_
-
+            xgb_best_grid_param = xgb_model.get_params()
             wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
             xgb_Y_pred = xgb_model.predict(X_val)
             xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
@@ -870,16 +886,24 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             logging.error("FIT_XGB_MODEL: %s", e)
 
     logging.info("FIT_XGB_MODEL: %s", "xgb run completed.")
-    return (xgb_result, xgb_score)
+    clf_output = CLFOutput(xgb_best_grid_param, xgb_score)
+
+    return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test10")
-def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> Any:
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    
     logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled for {epoch_str}.")
+
     lgb_result = None
     lgb_score = None
+    lgb_best_grid_param = None
+    
     try:
         # LGB
         lgb_grid = {"num_leaves": [31]}
@@ -914,6 +938,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     if lgb_result != None:
         lgb_model = lgb_result.best_estimator_
+        lgb_best_grid_param = lgb_model.get_params()
         wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
 
         lgb_Y_pred = lgb_model.predict(X_val)
@@ -934,7 +959,9 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_score = lgb_custom_score.get_default_metric()
 
     logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
-    return (lgb_result, lgb_score)
+    clf_output = CLFOutput(lgb_best_grid_param, lgb_score)
+
+    return clf_output
 
 
 # def flip_true_false(y):
