@@ -19,7 +19,6 @@ from sklearn.metrics import (
 from time import time
 import xgboost as xgb
 from sklearn.svm import SVC
-import matplotlib.pyplot as plt
 from imblearn.combine import SMOTETomek
 from imblearn.under_sampling import TomekLinks
 from imblearn.over_sampling import SMOTE
@@ -70,14 +69,6 @@ class CustomScore:
 
     def get_default_metric(self) -> float:
         return self.avg_precision
-
-class OutputClass:            
-    def __init__(self, logit, dt, rf, xgb, lgb) -> None:
-        self.logit = logit
-        self.dt = dt
-        self.rf = rf
-        self.xgb = xgb
-        self.lgb = lgb
 
 class CLFOutput:
     def __init__(self, gridsearch_dict: dict, score: float) -> None:
@@ -211,10 +202,11 @@ def filter_and_split_df(df: pd.DataFrame):
 
 
 @workflow
-def nested_loop() -> list[OutputClass]:
+def nested_loop() -> list[CLFOutput]:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     # FORMAT = '%(asctime)-15s %(message)s'
     logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
@@ -272,27 +264,30 @@ def nested_loop() -> list[OutputClass]:
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
 
-            
-            dt_output = fit_dt_model(
+            logit_output = fit_logistic_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
-            logit_output = fit_logistic_model(
+            dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             
             # rf_output = fit_rf_model(
             #     x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             # )
-            rf_output = None
+            # rf_output = None
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             lgb_output = fit_lgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
-            loop_outputs.append(OutputClass(logit_output, dt_output, rf_output, xgb_output, lgb_output))
-            logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
+            loop_outputs.append(logit_output)
+            loop_outputs.append(dt_output)
+            loop_outputs.append(logit_output)
+            loop_outputs.append(xgb_output)
+            loop_outputs.append(lgb_output)
             
+            logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")            
 
         logging.info("NESTED_LOOP: %s", f"loop_outputs has {len(loop_outputs)} items.")
         # refitt = refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
@@ -321,15 +316,16 @@ def main_wf():
     loop_outputs >> refitt
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def refitting_models(
-    loop_outputs: list[OutputClass]
+    loop_outputs: list[CLFOutput]
 ) -> None:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    csv_path = "."
+    csv_path = "/root/workflows"
     X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
 
     loop_counter = 0
@@ -352,38 +348,55 @@ def refitting_models(
     trained_xgb_model = None
     trained_lgb_model = None
 
-    for loop_item in loop_outputs:
-
-        logit_result = loop_item.logit.gridsearch_dict
-        dt_result = loop_item.dt.gridsearch_dict
-        # rf_result = loop_item.rf.gridsearch_dict
-        xgb_result = loop_item.xgb.gridsearch_dict
-        lgb_result = loop_item.lgb.gridsearch_dict
+    loop_counter = 0
+    total_iteration = int (len(loop_outputs) / 5)
     
-        if logit_result != None and logit_avg_prec < loop_item.logit.score:
-            logit_avg_prec = loop_item.logit.score
-            trained_logit_model = logit_result
-            logit_epoch_id = loop_counter
+    for i in range(total_iteration):
+        
+        index = 5 * i + 0
+        logit_output = loop_outputs[index]
 
-        if dt_result != None and dt_avg_prec < loop_item.dt.score:
-            dt_avg_prec = loop_item.dt.score
-            trained_dt_model = dt_result
-            dt_epoch_id = loop_counter
+        index = 5 * i + 1
+        dt_output = loop_outputs[index]
+        
+        index = 5 * i + 2
+        rf_output = loop_outputs[index]
+        
+        index = 5 * i + 3
+        xgb_output = loop_outputs[index]
+        
+        index = 5 * i + 4
+        lgb_output = loop_outputs[index]
+        
+        if logit_output != None and logit_output.score != None:
+            if logit_avg_prec < logit_output.score:
+                logit_avg_prec = logit_output.score
+                trained_logit_model = logit_output.gridsearch_dict
+                logit_epoch_id = loop_counter
 
-        # if rf_result != None and rf_avg_prec < loop_item.rf.score:
-        #     rf_avg_prec = loop_item.rf.score
-        #     trained_rf_model = rf_result
-            # rf_epoch_id = loop_counter
+        if dt_output != None and dt_output.score != None: 
+            if dt_avg_prec < dt_output.score:
+                dt_avg_prec = dt_output.score
+                trained_dt_model = dt_output.gridsearch_dict
+                dt_epoch_id = loop_counter
 
-        if xgb_result != None and xgb_avg_prec < loop_item.xgb.score:
-            xgb_avg_prec = loop_item.xgb.score
-            trained_xgb_model = xgb_result
-            xgb_epoch_id = loop_counter
+        # if rf_output != None and rf_output.score != None:
+        #     if rf_avg_prec < rf_output.score:
+        #         rf_avg_prec = rf_output.score
+        #         trained_rf_model = rf_output.gridsearch_dict
+        #         rf_epoch_id = loop_counter
 
-        if lgb_result != None and lgb_avg_prec < loop_item.lgb.score:
-            lgb_avg_prec = loop_item.lgb.score
-            trained_lgb_model = lgb_result
-            lgb_epoch_id = loop_counter
+        if xgb_output != None and xgb_output.score != None:
+            if xgb_avg_prec < xgb_output.score:
+                xgb_avg_prec = xgb_output.score
+                trained_xgb_model = xgb_output.gridsearch_dict
+                xgb_epoch_id = loop_counter
+
+        if lgb_output != None and lgb_output.score != None: 
+            if lgb_avg_prec < lgb_output.score:
+                lgb_avg_prec = lgb_output.score
+                trained_lgb_model = lgb_output.gridsearch_dict
+                lgb_epoch_id = loop_counter
         
         loop_counter += 1
 
@@ -535,7 +548,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -543,6 +556,7 @@ def fit_logistic_model(
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     logging.info("FIT_LOGIT_MODEL: %s", f"logit run scheduled for {epoch_str}.")
 
@@ -609,12 +623,13 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     logging.info("FIT_DT_MODEL: %s", f"dt run scheduled for {epoch_str}.")
 
@@ -678,12 +693,13 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # SVC
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     logging.info("FIT_SVC_MODEL: %s", f"svc run scheduled for {epoch_str}.")
 
@@ -750,12 +766,13 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     logging.info("FIT_RF_MODEL: %s", f"rf run scheduled for {epoch_str}.")
 
@@ -819,12 +836,14 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
 
     logging.info("FIT_XGB_MODEL: %s", f"xgb run scheduled for {epoch_str}.")
 
@@ -893,12 +912,14 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
     
     logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled for {epoch_str}.")
 
