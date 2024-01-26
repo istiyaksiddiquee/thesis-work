@@ -1,48 +1,37 @@
-# read df input from pickled files
-# use smote upgrade
-
 import os
+import wandb
+import joblib
+import pickle
+import logging
 import chardet
+import numpy as np
 import pandas as pd
+from copy import copy
+import xgboost as xgb
+from time import time
+import lightgbm as lgb
+import smote_variants as sv
 from sklearn.metrics import (
     balanced_accuracy_score,
     accuracy_score,
-    precision_recall_curve,
     average_precision_score,
     fbeta_score,
     make_scorer,
     precision_score,
     recall_score,
-    confusion_matrix,
     roc_auc_score,
 )
-from time import time
-import xgboost as xgb
 from sklearn.svm import SVC
-from imblearn.combine import SMOTETomek
-from imblearn.under_sampling import TomekLinks
-from imblearn.over_sampling import SMOTE
+from flytekit import task, workflow
+from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_split
-from sklearn.dummy import DummyClassifier
-from copy import copy
-import numpy as np
-import wandb
-import joblib
-import lightgbm as lgb
-from typing import Dict, Any, List
-import pickle
-import logging
-from flytekit import task, workflow, dynamic
-import smote_variants as sv
-import warnings
-warnings.filterwarnings("ignore")
 
-wandb_project = "test01"
 random_state = 7
+wandb_project = "test03"
 no_of_active_features = 15
 optimization_metric = "average_precision_score"
 
@@ -55,7 +44,6 @@ scorers_for_gridcv = {
     "average_precision_score": make_scorer(average_precision_score),
     "roc_auc": make_scorer(roc_auc_score),
 }
-
 
 class CustomScore:
     def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc) -> None:
@@ -149,37 +137,37 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
-    # wandb.init(project=wandb_project)
+    wandb.init(project=wandb_project)
 
     with open(file_path + "/x_train_val.pickle", "rb") as file:
         X_train_val = pickle.load(file)
-        # joblib.dump(X_train_val, "x_train_val.joblib")
-        # x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
-        # x_train_val_artifact.add_file("x_train_val.joblib")
-        # wandb.log_artifact(x_train_val_artifact)
+        joblib.dump(X_train_val, "x_train_val.joblib")
+        x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
+        x_train_val_artifact.add_file("x_train_val.joblib")
+        wandb.log_artifact(x_train_val_artifact)
 
     with open(file_path + "/y_train_val.pickle", "rb") as file:
         y_train_val = pickle.load(file)
-        # joblib.dump(y_train_val, "y_train_val.joblib")
-        # y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
-        # y_train_val_artifact.add_file("y_train_val.joblib")
-        # wandb.log_artifact(y_train_val_artifact)
+        joblib.dump(y_train_val, "y_train_val.joblib")
+        y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
+        y_train_val_artifact.add_file("y_train_val.joblib")
+        wandb.log_artifact(y_train_val_artifact)
 
     with open(file_path + "/x_test.pickle", "rb") as file:
         X_test = pickle.load(file)
-        # joblib.dump(X_test, "x_test.joblib")
-        # x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
-        # x_test_artifact.add_file("x_test.joblib")
-        # wandb.log_artifact(x_test_artifact)
+        joblib.dump(X_test, "x_test.joblib")
+        x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
+        x_test_artifact.add_file("x_test.joblib")
+        wandb.log_artifact(x_test_artifact)
 
     with open(file_path + "/y_test.pickle", "rb") as file:
         y_test = pickle.load(file)
-        # joblib.dump(y_test, "y_test.joblib")
-        # y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
-        # y_test_artifact.add_file("y_test.joblib")
-        # wandb.log_artifact(y_test_artifact)
+        joblib.dump(y_test, "y_test.joblib")
+        y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
+        y_test_artifact.add_file("y_test.joblib")
+        wandb.log_artifact(y_test_artifact)
 
-    # wandb.finish()
+    wandb.finish()
     
     return X_train_val, X_test, y_train_val, y_test
 
@@ -212,20 +200,15 @@ def nested_loop() -> list[CLFOutput]:
     logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
 
     try:
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Started", text="Your run has started. Mark the time.")
-        # wandb.finish()
 
-        start = time()
-
-        logging.info("WORK: %s", "initiating processing, reading files")
+        logging.info("NESTED_LOOP: %s", "initiating processing, reading files")
         csv_path = "."
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
 
         # call the nested loop to get all the trained models
-        logging.info("WORK: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
+        logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
 
-        logging.info("WORK: %s", "entering nested loop")
+        logging.info("NESTED_LOOP: %s", "entering nested loop")
 
         outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
 
@@ -270,11 +253,9 @@ def nested_loop() -> list[CLFOutput]:
             dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
-            
-            # rf_output = fit_rf_model(
-            #     x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            # )
-            # rf_output = None
+            rf_output = fit_rf_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
@@ -283,44 +264,49 @@ def nested_loop() -> list[CLFOutput]:
             )
             loop_outputs.append(logit_output)
             loop_outputs.append(dt_output)
-            loop_outputs.append(logit_output)
+            loop_outputs.append(rf_output)
             loop_outputs.append(xgb_output)
             loop_outputs.append(lgb_output)
             
-            logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")            
-
-        logging.info("NESTED_LOOP: %s", f"loop_outputs has {len(loop_outputs)} items.")
-        # refitt = refitting_models(loop_outputs=loop_outputs, X_train_val=X_train_val, y_train_val=y_train_val)
-
-        end = time()
-        time_taken = str(end - start)
-        logging.info("NESTED_LOOP: %s", f"{epoch_str} re-fitting logging compelte, end of epoch. it took {time_taken} seconds")
-
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Complete", text="Your run is complete. Check the board.")
-        # wandb.finish()
-
+        logging.info("NESTED_LOOP: %s", f"model fitting for {epoch_str} completed.")
+        
     except Exception as error:
-        logging.info("MAIN: %s", "ERROR: some error happened, could not finish.")
-        logging.info("MAIN: %s", error)
+        logging.error("NESTED_LOOP: %s", "ERROR: some error happened, could not finish.")
+        logging.error("NESTED_LOOP: %s", error)
 
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Error", text="Your run was interrupted by some exception.")
-        # wandb.finish()
+        wandb.init(project=wandb_project)
+        wandb.alert(title="Error", text="Your run was interrupted by some exception.")
+        wandb.finish()
     return loop_outputs
 
 @workflow
 def main_wf():
+    # wandb.init(project=wandb_project)
+    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    # wandb.finish()
+    
+    start = time()
+
     loop_outputs = nested_loop()
     refitt = refitting_models(loop_outputs=loop_outputs)
     loop_outputs >> refitt
 
+    end = time()
+    time_taken = str(end - start)
+    logging.info("MAIN_WF: %s", f"workflow finished. it took {time_taken} seconds")
+    
+    # wandb.init(project=wandb_project)
+    # wandb.alert(title="Complete", text="Your run is complete. Check the board.")
+    # wandb.finish()
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
 
+    logging.info("REFITTING_MODELS: %s", "Model Refitting starts.")
+    
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -380,11 +366,11 @@ def refitting_models(
                 trained_dt_model = dt_output.gridsearch_dict
                 dt_epoch_id = loop_counter
 
-        # if rf_output != None and rf_output.score != None:
-        #     if rf_avg_prec < rf_output.score:
-        #         rf_avg_prec = rf_output.score
-        #         trained_rf_model = rf_output.gridsearch_dict
-        #         rf_epoch_id = loop_counter
+        if rf_output != None and rf_output.score != None:
+            if rf_avg_prec < rf_output.score:
+                rf_avg_prec = rf_output.score
+                trained_rf_model = rf_output.gridsearch_dict
+                rf_epoch_id = loop_counter
 
         if xgb_output != None and xgb_output.score != None:
             if xgb_avg_prec < xgb_output.score:
@@ -416,8 +402,11 @@ def refitting_models(
 
     # dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
 
+    logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
+    
     if trained_logit_model != None:
         # store logit model
+        logging.info("REFITTING_MODELS: %s", "processing logit model.")
         logistic = LogisticRegression(**trained_logit_model)
         refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
@@ -438,7 +427,9 @@ def refitting_models(
         wandb.finish()
 
     if trained_dt_model != None:
+
         # store dt model
+        logging.info("REFITTING_MODELS: %s", "processing dt model.")
         dt = DecisionTreeClassifier(**trained_dt_model)
         refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
@@ -459,7 +450,9 @@ def refitting_models(
         wandb.finish()
 
     if trained_rf_model != None:
+
         # store rf model
+        logging.info("REFITTING_MODELS: %s", "processing rf model.")
         rf = RandomForestClassifier(**trained_rf_model)
         refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
@@ -480,7 +473,9 @@ def refitting_models(
         wandb.finish()
 
     if trained_xgb_model != None:
+
         # store xgb model
+        logging.info("REFITTING_MODELS: %s", "processing xgb model.")
         xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
         xgboost = xgboost.set_params(**trained_xgb_model)
         refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
@@ -502,7 +497,9 @@ def refitting_models(
         wandb.finish()
 
     if trained_lgb_model != None:
+
         # store lgb model
+        logging.info("REFITTING_MODELS: %s", "processing lgb model.")
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
         lgb_model = lgb_model.set_params(**trained_lgb_model)
         refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
@@ -523,6 +520,7 @@ def refitting_models(
         wandb.log_artifact(lgb_artifact)
         wandb.finish()
 
+    logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
     return
 
 def oversample_data(X: pd.Series, y: pd.Series):
@@ -548,7 +546,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -559,6 +557,7 @@ def fit_logistic_model(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     logging.info("FIT_LOGIT_MODEL: %s", f"logit run scheduled for {epoch_str}.")
+    logging.info("FIT_LOGIT_MODEL: %s", f"{x_train_df.shape}, {y_train_df.shape}, {X_val.shape}, {Y_val.shape}.")
 
     logit_result = None
     logit_best_grid_param = None
@@ -568,16 +567,16 @@ def fit_logistic_model(
         logit_grid = {
             "penalty": ["l2"],
         }
-        # logit_grid = {
-        #     "penalty": ["l1", "l2", "elasticnet"],
-        #     "dual": [True, False],
-        #     "C": [_ for _ in range(1, 10, 1)],
-        #     "fit_intercept": [True, False],
-        #     "max_iter": [500],
-        #     "solver": ["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"],
-        #     "n_jobs": [-1],
-        # }
-        logit_model = LogisticRegression()
+        logit_grid = {
+            "penalty": ["l1", "l2", "elasticnet"],
+            "dual": [True, False],
+            "C": [_ for _ in range(1, 10, 1)],
+            "fit_intercept": [True, False],
+            "max_iter": [500],
+            "solver": ["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"],
+            "n_jobs": [-1],
+        }
+        # logit_model = LogisticRegression()
 
         clf = GridSearchCV(
             estimator=logit_model,
@@ -592,8 +591,8 @@ def fit_logistic_model(
         logit_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
-        logging.error("Could not fit Logistic model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_LOGIT_MODEL: %s", "Could not fit Logistic model.")
+        logging.error("FIT_LOGIT_MODEL: %s", f"An exception occurred: {error}")
 
     if logit_result != None:
         logit_model = logit_result.best_estimator_
@@ -623,7 +622,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -638,14 +637,14 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     dt_best_grid_param = None
     try:
 
-        # dt_grid = {
-        #     "criterion": ["gini", "entropy", "log_loss"],
-        #     "splitter": ["best", "random"],
-        #     "max_depth": [_ for _ in range(1, 10, 1)],
-        #     "min_samples_split": [_ for _ in range(1, 10, 1)],
-        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        # }
-        dt_grid = {"criterion": ["gini"]}
+        dt_grid = {
+            "criterion": ["gini", "entropy", "log_loss"],
+            "splitter": ["best", "random"],
+            "max_depth": [_ for _ in range(1, 10, 1)],
+            "min_samples_split": [_ for _ in range(1, 10, 1)],
+            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        }
+        # dt_grid = {"criterion": ["gini"]}
         dt_clf = DecisionTreeClassifier(random_state=random_state)
 
         clf = GridSearchCV(
@@ -661,8 +660,8 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
-        logging.error("Could not fit Decision Tree model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_DT_MODEL: %s", "Could not fit Decision Tree model")
+        logging.error("FIT_DT_MODEL: %s", f"An exception occurred: {error}")
 
     if dt_result != None:
         dt_model = dt_result.best_estimator_
@@ -693,7 +692,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # SVC
 
@@ -709,16 +708,16 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     try:
         # SVC
-        svc_grid = {"C": [0.1]}
-        # svc_grid = {
-        #     "C": [0.1],
-        #     "kernel": ["linear", "poly", "rbf", "sigmoid"],
-        #     "degree": [_ for _ in range(1, 5, 1)],
-        #     "gamma": ["scale", "auto"],
-        #     "decision_function_shape": ["ovo", "ovr"],
-        #     "shrinking": [True, False],
-        #     "coef0": [0.0, 0.1, 0.01, 0.5, 1],
-        # }
+        # svc_grid = {"C": [0.1]}
+        svc_grid = {
+            "C": [0.1],
+            "kernel": ["linear", "poly", "rbf", "sigmoid"],
+            "degree": [_ for _ in range(1, 5, 1)],
+            "gamma": ["scale", "auto"],
+            "decision_function_shape": ["ovo", "ovr"],
+            "shrinking": [True, False],
+            "coef0": [0.0, 0.1, 0.01, 0.5, 1],
+        }
         svc_model = SVC()
 
         clf = GridSearchCV(
@@ -734,8 +733,8 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         svc_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
-        logging.error("Could not fit SVC model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_SVC_MODEL: %s", "Could not fit SVC model.")
+        logging.error("FIT_SVC_MODEL: %s", f"An exception occurred: {error}")
 
     if svc_result != None:
         svc_model = svc_result.best_estimator_
@@ -766,7 +765,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -781,14 +780,14 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     rf_best_grid_param = None
 
     try:
-        rf_grid = {"criterion": ["gini"]}
+        # rf_grid = {"criterion": ["gini"]}
 
-        # rf_grid = {
-        #     "criterion": ["gini", "entropy", "log_loss"],
-        #     "max_depth": [_ for _ in range(1, 10, 1)],
-        #     "max_features": ["sqrt", "log2", None],
-        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        # }
+        rf_grid = {
+            "criterion": ["gini", "entropy", "log_loss"],
+            "max_depth": [_ for _ in range(1, 10, 1)],
+            "max_features": ["sqrt", "log2", None],
+            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        }
         rf_model = RandomForestClassifier()
 
         clf = GridSearchCV(
@@ -804,8 +803,8 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
-        logging.error("Could not fit Random Forest model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_RF_MODEL: %s", f"Could not fit Random Forest model.")
+        logging.error("FIT_RF_MODEL: %s", f"An exception occurred: {error}")
 
     if rf_result != None:
         rf_model = rf_result.best_estimator_
@@ -836,14 +835,13 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
-
 
     logging.info("FIT_XGB_MODEL: %s", f"xgb run scheduled for {epoch_str}.")
 
@@ -853,14 +851,14 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     try:
         # XGB
-        xgb_grid = {
-            "learning_rate": [0.1],
-        }
         # xgb_grid = {
-        #     # "n_estimators": range(60, 220, 40),
-        #     "learning_rate": [0.1, 0.01, 0.05],
-        #     "booster": ["gbtree", "gblinear", "dart"],
+        #     "learning_rate": [0.1],
         # }
+        xgb_grid = {
+            # "n_estimators": range(60, 220, 40),
+            "learning_rate": [0.1, 0.01, 0.05],
+            "booster": ["gbtree", "gblinear", "dart"],
+        }
 
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
@@ -874,20 +872,22 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             n_jobs=-1,
         )
 
-        xgb_result = clf.fit(x_train_df, y_train_df)
+        xgb_result = clf.fit(x_train_df.values, y_train_df.values)
 
     except Exception as error:
-        logging.error("Could not fit XGB model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_XGB_MODEL: %s", "Could not fit XGB model")
+        logging.error("FIT_XGB_MODEL: %s", f"An exception occurred: {error}")
 
     if xgb_result != None:
         try:
             xgb_model = xgb_result.best_estimator_
             xgb_best_grid_param = xgb_model.get_params()
+            
             wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
-            xgb_Y_pred = xgb_model.predict(X_val)
-            xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
-            xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+            
+            xgb_Y_pred = xgb_model.predict(X_val.values)
+            xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
+            xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
             wandb.log(convert_scores_to_dict(xgb_custom_score))
 
             xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
@@ -912,7 +912,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test24")
+# @task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -929,17 +929,17 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     
     try:
         # LGB
-        lgb_grid = {"num_leaves": [31]}
+        # lgb_grid = {"num_leaves": [31]}
 
-        # lgb_grid = {
-        #     "learning_rate": [0.001, 0.005, 0.01],
-        #     "n_estimators": [8, 16, 24],
-        #     "num_leaves": [6, 8, 12],  # large num_leaves helps improve accuracy but might lead to over-fitting
-        #     "boosting_type": ["gbdt", "dart"],  # for better accuracy -> try dart
-        #     "subsample": [0.7, 0.75],
-        #     "reg_alpha": [1, 1.2],
-        #     "reg_lambda": [1, 1.2, 1.4],
-        # }
+        lgb_grid = {
+            "learning_rate": [0.001, 0.005, 0.01],
+            "n_estimators": [8, 16, 24],
+            "num_leaves": [6, 8, 12],  # large num_leaves helps improve accuracy but might lead to over-fitting
+            "boosting_type": ["gbdt", "dart"],  # for better accuracy -> try dart
+            "subsample": [0.7, 0.75],
+            "reg_alpha": [1, 1.2],
+            "reg_lambda": [1, 1.2, 1.4],
+        }
 
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
 
@@ -956,10 +956,11 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
-        logging.error("Could not fit XGB model")
-        logging.error("An exception occurred:", error)
+        logging.error("FIT_LGB_MODEL: %s", f"Could not fit XGB model")
+        logging.error("FIT_LGB_MODEL: %s", f"An exception occurred: {error}")
 
     if lgb_result != None:
+        
         lgb_model = lgb_result.best_estimator_
         lgb_best_grid_param = lgb_model.get_params()
         wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
@@ -994,4 +995,4 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
 
 if __name__ == "__main__":
-    nested_loop()
+    main_wf()

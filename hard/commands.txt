@@ -23,5 +23,5 @@ kubectl delete ns flyte
 
 
 
-sudo docker build -t istiyaksiddiquee/flyte-for-kube:test20 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test20" .
-sudo docker push istiyaksiddiquee/flyte-for-kube:test20
+sudo docker build -t istiyaksiddiquee/flyte-for-kube:test25 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test25" .
+sudo docker push istiyaksiddiquee/flyte-for-kube:test25
