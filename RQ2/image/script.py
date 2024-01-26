@@ -319,9 +319,9 @@ def main_wf():
     loop_outputs >> refitt
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def refitting_models(
-    loop_outputs: any
+    loop_outputs: list[OutputClass]
 ) -> None:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -533,7 +533,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -607,7 +607,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -676,7 +676,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # SVC
 
@@ -748,7 +748,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -817,7 +817,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -891,7 +891,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test16")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test17")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
