@@ -11,7 +11,7 @@ spec:
     storage: 1Gi
   volumeMode: Filesystem
   hostPath:
-    path: cd /var/lib/flyte/storage/minio
+    path: /var/lib/flyte/storage/minio
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

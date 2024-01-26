@@ -272,16 +272,18 @@ def nested_loop() -> list[OutputClass]:
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
 
-            logit_output = fit_logistic_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            )
+            
             dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
-            rf_output = None
+            logit_output = fit_logistic_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
+            
             # rf_output = fit_rf_model(
             #     x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             # )
+            rf_output = None
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
