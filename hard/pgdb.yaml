@@ -6,12 +6,13 @@ spec:
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   capacity:
     storage: 1Gi
   volumeMode: Filesystem
   hostPath:
-    path: /var/lib/flyte/storage/db
+    # path: /var/lib/flyte/storage/db
+    path: /home/siddiquee/flyte/storage/db
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -22,7 +23,7 @@ spec:
   storageClassName: manual
   volumeName: flyte-db-storage
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   volumeMode: Filesystem
   resources:
     requests:

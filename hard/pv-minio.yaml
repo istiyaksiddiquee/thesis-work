@@ -6,12 +6,13 @@ spec:
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   capacity:
     storage: 1Gi
   volumeMode: Filesystem
   hostPath:
-    path: /var/lib/flyte/storage/minio
+    # path: /var/lib/flyte/storage/minio
+    path: /home/siddiquee/flyte/storage/minio
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -20,7 +21,7 @@ metadata:
   namespace: flyte
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 1Gi

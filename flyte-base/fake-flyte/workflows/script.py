@@ -45,7 +45,6 @@ scorers_for_gridcv = {
     "roc_auc": make_scorer(roc_auc_score),
 }
 
-
 class CustomScore:
     def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc) -> None:
         self.accuracy = accuracy
@@ -138,37 +137,37 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
-    wandb.init(project=wandb_project)
+    # wandb.init(project=wandb_project)
 
     with open(file_path + "/x_train_val.pickle", "rb") as file:
         X_train_val = pickle.load(file)
-        joblib.dump(X_train_val, "x_train_val.joblib")
-        x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
-        x_train_val_artifact.add_file("x_train_val.joblib")
-        wandb.log_artifact(x_train_val_artifact)
+        # joblib.dump(X_train_val, "x_train_val.joblib")
+        # x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
+        # x_train_val_artifact.add_file("x_train_val.joblib")
+        # wandb.log_artifact(x_train_val_artifact)
 
     with open(file_path + "/y_train_val.pickle", "rb") as file:
         y_train_val = pickle.load(file)
-        joblib.dump(y_train_val, "y_train_val.joblib")
-        y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
-        y_train_val_artifact.add_file("y_train_val.joblib")
-        wandb.log_artifact(y_train_val_artifact)
+        # joblib.dump(y_train_val, "y_train_val.joblib")
+        # y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
+        # y_train_val_artifact.add_file("y_train_val.joblib")
+        # wandb.log_artifact(y_train_val_artifact)
 
     with open(file_path + "/x_test.pickle", "rb") as file:
         X_test = pickle.load(file)
-        joblib.dump(X_test, "x_test.joblib")
-        x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
-        x_test_artifact.add_file("x_test.joblib")
-        wandb.log_artifact(x_test_artifact)
+        # joblib.dump(X_test, "x_test.joblib")
+        # x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
+        # x_test_artifact.add_file("x_test.joblib")
+        # wandb.log_artifact(x_test_artifact)
 
     with open(file_path + "/y_test.pickle", "rb") as file:
         y_test = pickle.load(file)
-        joblib.dump(y_test, "y_test.joblib")
-        y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
-        y_test_artifact.add_file("y_test.joblib")
-        wandb.log_artifact(y_test_artifact)
+        # joblib.dump(y_test, "y_test.joblib")
+        # y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
+        # y_test_artifact.add_file("y_test.joblib")
+        # wandb.log_artifact(y_test_artifact)
 
-    wandb.finish()
+    # wandb.finish()
     
     return X_train_val, X_test, y_train_val, y_test
 
@@ -301,7 +300,7 @@ def main_wf():
     # wandb.finish()
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -547,7 +546,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -568,15 +567,15 @@ def fit_logistic_model(
         logit_grid = {
             "penalty": ["l2"],
         }
-        logit_grid = {
-            "penalty": ["l1", "l2", "elasticnet"],
-            "dual": [True, False],
-            "C": [_ for _ in range(1, 10, 1)],
-            "fit_intercept": [True, False],
-            "max_iter": [500],
-            "solver": ["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"],
-            "n_jobs": [-1],
-        }
+        # logit_grid = {
+        #     "penalty": ["l1", "l2", "elasticnet"],
+        #     "dual": [True, False],
+        #     "C": [_ for _ in range(1, 10, 1)],
+        #     "fit_intercept": [True, False],
+        #     "max_iter": [500],
+        #     "solver": ["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"],
+        #     "n_jobs": [-1],
+        # }
         # logit_model = LogisticRegression()
 
         clf = GridSearchCV(
@@ -623,7 +622,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -638,14 +637,14 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     dt_best_grid_param = None
     try:
 
-        dt_grid = {
-            "criterion": ["gini", "entropy", "log_loss"],
-            "splitter": ["best", "random"],
-            "max_depth": [_ for _ in range(1, 10, 1)],
-            "min_samples_split": [_ for _ in range(1, 10, 1)],
-            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        }
-        # dt_grid = {"criterion": ["gini"]}
+        # dt_grid = {
+        #     "criterion": ["gini", "entropy", "log_loss"],
+        #     "splitter": ["best", "random"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "min_samples_split": [_ for _ in range(1, 10, 1)],
+        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        # }
+        dt_grid = {"criterion": ["gini"]}
         dt_clf = DecisionTreeClassifier(random_state=random_state)
 
         clf = GridSearchCV(
@@ -693,7 +692,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # SVC
 
@@ -709,16 +708,16 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     try:
         # SVC
-        # svc_grid = {"C": [0.1]}
-        svc_grid = {
-            "C": [0.1],
-            "kernel": ["linear", "poly", "rbf", "sigmoid"],
-            "degree": [_ for _ in range(1, 5, 1)],
-            "gamma": ["scale", "auto"],
-            "decision_function_shape": ["ovo", "ovr"],
-            "shrinking": [True, False],
-            "coef0": [0.0, 0.1, 0.01, 0.5, 1],
-        }
+        svc_grid = {"C": [0.1]}
+        # svc_grid = {
+        #     "C": [0.1],
+        #     "kernel": ["linear", "poly", "rbf", "sigmoid"],
+        #     "degree": [_ for _ in range(1, 5, 1)],
+        #     "gamma": ["scale", "auto"],
+        #     "decision_function_shape": ["ovo", "ovr"],
+        #     "shrinking": [True, False],
+        #     "coef0": [0.0, 0.1, 0.01, 0.5, 1],
+        # }
         svc_model = SVC()
 
         clf = GridSearchCV(
@@ -766,7 +765,7 @@ def fit_svc_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -781,14 +780,14 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     rf_best_grid_param = None
 
     try:
-        # rf_grid = {"criterion": ["gini"]}
+        rf_grid = {"criterion": ["gini"]}
 
-        rf_grid = {
-            "criterion": ["gini", "entropy", "log_loss"],
-            "max_depth": [_ for _ in range(1, 10, 1)],
-            "max_features": ["sqrt", "log2", None],
-            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        }
+        # rf_grid = {
+        #     "criterion": ["gini", "entropy", "log_loss"],
+        #     "max_depth": [_ for _ in range(1, 10, 1)],
+        #     "max_features": ["sqrt", "log2", None],
+        #     "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+        # }
         rf_model = RandomForestClassifier()
 
         clf = GridSearchCV(
@@ -836,7 +835,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -852,14 +851,14 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     try:
         # XGB
-        # xgb_grid = {
-        #     "learning_rate": [0.1],
-        # }
         xgb_grid = {
-            # "n_estimators": range(60, 220, 40),
-            "learning_rate": [0.1, 0.01, 0.05],
-            "booster": ["gbtree", "gblinear", "dart"],
+            "learning_rate": [0.1],
         }
+        # xgb_grid = {
+        #     # "n_estimators": range(60, 220, 40),
+        #     "learning_rate": [0.1, 0.01, 0.05],
+        #     "booster": ["gbtree", "gblinear", "dart"],
+        # }
 
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
@@ -913,7 +912,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-# @task(container_image="istiyaksiddiquee/flyte-for-kube:test25")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:test26")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -930,17 +929,17 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     
     try:
         # LGB
-        # lgb_grid = {"num_leaves": [31]}
+        lgb_grid = {"num_leaves": [31]}
 
-        lgb_grid = {
-            "learning_rate": [0.001, 0.005, 0.01],
-            "n_estimators": [8, 16, 24],
-            "num_leaves": [6, 8, 12],  # large num_leaves helps improve accuracy but might lead to over-fitting
-            "boosting_type": ["gbdt", "dart"],  # for better accuracy -> try dart
-            "subsample": [0.7, 0.75],
-            "reg_alpha": [1, 1.2],
-            "reg_lambda": [1, 1.2, 1.4],
-        }
+        # lgb_grid = {
+        #     "learning_rate": [0.001, 0.005, 0.01],
+        #     "n_estimators": [8, 16, 24],
+        #     "num_leaves": [6, 8, 12],  # large num_leaves helps improve accuracy but might lead to over-fitting
+        #     "boosting_type": ["gbdt", "dart"],  # for better accuracy -> try dart
+        #     "subsample": [0.7, 0.75],
+        #     "reg_alpha": [1, 1.2],
+        #     "reg_lambda": [1, 1.2, 1.4],
+        # }
 
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
 
@@ -995,5 +994,5 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 #     return flipped_y
 
 
-if __name__ == "__main__":
-    main_wf()
+# if __name__ == "__main__":
+#     main_wf()

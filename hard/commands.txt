@@ -6,10 +6,11 @@ helm repo add flyteorg https://flyteorg.github.io/flyte
 helm install flyte-binary flyteorg/flyte-binary  --values local-values.yaml -n flyte
 helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
 helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard --namespace flyte --values dashboard.yaml
+
 kubectl -n flyte port-forward service/minio 9000:9000
 kubectl -n flyte port-forward service/flyte-binary-grpc 8089:8089
 kubectl -n flyte port-forward service/flyte-binary-http 8088:8088
-kubectl -n flyte port-forward kubernetes-dashboard-64fc65498c-4s9zk 9090:9090
+kubectl -n flyte port-forward kubernetes-dashboard-64fc65498c-45n2r 9090:9090
 
 cd /var/lib/flyte
 
