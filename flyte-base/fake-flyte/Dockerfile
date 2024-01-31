@@ -13,9 +13,7 @@ ENV VENV /opt/venv
 RUN python3 -m venv ${VENV}
 ENV PATH="${VENV}/bin:$PATH"
 
-RUN pip install flytekit==1.9.1 \
-	flytekitplugins-pod==1.9.1 \
-	flytekitplugins-deck-standard==1.9.1
+RUN pip install flytekit==1.9.1 
 
 COPY requirements.txt /root
 
