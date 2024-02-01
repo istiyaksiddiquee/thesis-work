@@ -171,7 +171,7 @@ def nested_loop() -> list[CLFOutput]:
         logging.info("NESTED_LOOP: %s", "entering nested loop")
 
         # outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
-        outer_cv = KFold(n_splits=2)
+        outer_cv = KFold(n_splits=5)
 
         loop_index = 0
 
