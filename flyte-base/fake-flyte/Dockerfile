@@ -9,7 +9,6 @@ ENV PYTHONPATH /root
 RUN apt-get update && apt-get install -y build-essential
 
 ENV VENV /opt/venv
-# Virtual environment
 RUN python3 -m venv ${VENV}
 ENV PATH="${VENV}/bin:$PATH"
 
@@ -19,10 +18,10 @@ COPY requirements.txt /root
 
 RUN pip install -r /root/requirements.txt
 
-# Copy the actual code
 COPY . /root
 
-# This tag is supplied by the build script and will be used to determine the version
-# when registering tasks, workflows, and launch plans
 ARG tag
 ENV FLYTE_INTERNAL_IMAGE $tag
+
+# docker build -t istiyaksiddiquee/flyte-for-kube:test01 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test01" .
+

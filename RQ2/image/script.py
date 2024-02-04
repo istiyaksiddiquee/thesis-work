@@ -31,7 +31,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_split, KFold
 
 random_state = 7
-wandb_project = "RQ2RUN2"
+wandb_project = "RQ2RUN4"
 no_of_active_features = 15
 optimization_metric = "average_precision_score"
 
@@ -117,28 +117,28 @@ def read_pickled_input_files(file_path: str):
 
     # wandb.init(project=wandb_project)
 
-    with open(file_path + "/x_train_val.pickle", "rb") as file:
+    with open(file_path + "/x_train_val_full.pickle", "rb") as file:
         X_train_val = pickle.load(file)
         # joblib.dump(X_train_val, "x_train_val.joblib")
         # x_train_val_artifact = wandb.Artifact("x_train_val.joblib", type="dataset")
         # x_train_val_artifact.add_file("x_train_val.joblib")
         # wandb.log_artifact(x_train_val_artifact)
 
-    with open(file_path + "/y_train_val.pickle", "rb") as file:
+    with open(file_path + "/y_train_val_full.pickle", "rb") as file:
         y_train_val = pickle.load(file)
         # joblib.dump(y_train_val, "y_train_val.joblib")
         # y_train_val_artifact = wandb.Artifact("y_train_val.joblib", type="dataset")
         # y_train_val_artifact.add_file("y_train_val.joblib")
         # wandb.log_artifact(y_train_val_artifact)
 
-    with open(file_path + "/x_test.pickle", "rb") as file:
+    with open(file_path + "/x_test_full.pickle", "rb") as file:
         X_test = pickle.load(file)
         # joblib.dump(X_test, "x_test.joblib")
         # x_test_artifact = wandb.Artifact("x_test.joblib", type="dataset")
         # x_test_artifact.add_file("x_test.joblib")
         # wandb.log_artifact(x_test_artifact)
 
-    with open(file_path + "/y_test.pickle", "rb") as file:
+    with open(file_path + "/y_test_full.pickle", "rb") as file:
         y_test = pickle.load(file)
         # joblib.dump(y_test, "y_test.joblib")
         # y_test_artifact = wandb.Artifact("y_test.joblib", type="dataset")
@@ -196,8 +196,8 @@ def nested_loop() -> list[CLFOutput]:
             cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
             normalized_df["depth"] = np.log(normalized_df["depth"])
             normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-            # normalized_df["size"] = np.log(normalized_df["size"])
-            # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+            normalized_df["size"] = np.log(normalized_df["size"])
+            normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
             normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
 
             scaler = StandardScaler().set_output(transform="pandas")
@@ -260,7 +260,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -352,8 +352,8 @@ def refitting_models(
     cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
     normalized_df["depth"] = np.log(normalized_df["depth"])
     normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-    # normalized_df["size"] = np.log(normalized_df["size"])
-    # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+    normalized_df["size"] = np.log(normalized_df["size"])
+    normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
     normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
 
     scaler = StandardScaler().set_output(transform="pandas")
@@ -503,7 +503,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -579,7 +579,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -648,7 +648,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -717,7 +717,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -794,7 +794,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN2")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
