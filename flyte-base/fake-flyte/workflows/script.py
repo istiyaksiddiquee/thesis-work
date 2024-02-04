@@ -31,7 +31,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_split, KFold
 
 random_state = 7
-wandb_project = "RQ2RUN4"
+wandb_project = "RQ2RUN3"
 no_of_active_features = 15
 optimization_metric = "average_precision_score"
 
@@ -202,8 +202,8 @@ def nested_loop() -> list[CLFOutput]:
 
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
-            # scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
-            scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
+            scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
+            # scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
 
             inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
@@ -260,7 +260,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -358,8 +358,8 @@ def refitting_models(
 
     scaler = StandardScaler().set_output(transform="pandas")
     scaled_X_train_val = scaler.fit_transform(normalized_df)
-    # scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
-    scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
+    scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
+    # scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
 
     # dummy_false = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, 0)
 
@@ -503,7 +503,7 @@ def fit_dummy_classifier(x_train_df, y_train_df, constant):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -579,7 +579,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -648,7 +648,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -717,7 +717,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -794,7 +794,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-kube:RQ2RUN3")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
