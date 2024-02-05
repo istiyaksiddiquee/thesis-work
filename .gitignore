@@ -7,3 +7,4 @@ hard/__pycache__/
 flyte-base/flyte-env
 RQ2/image/test-env/
 RQ2/image/wandb/
+RQ2/analysis/wandb/
