@@ -196,8 +196,8 @@ def nested_loop() -> list[CLFOutput]:
             cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
             normalized_df["depth"] = np.log(normalized_df["depth"])
             normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-            normalized_df["size"] = np.log(normalized_df["size"])
-            normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+            # normalized_df["size"] = np.log(normalized_df["size"])
+            # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
             normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
 
             scaler = StandardScaler().set_output(transform="pandas")
@@ -352,8 +352,8 @@ def refitting_models(
     cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
     normalized_df["depth"] = np.log(normalized_df["depth"])
     normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-    normalized_df["size"] = np.log(normalized_df["size"])
-    normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+    # normalized_df["size"] = np.log(normalized_df["size"])
+    # normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
     normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
 
     scaler = StandardScaler().set_output(transform="pandas")
