@@ -21,14 +21,13 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.svm import SVC
 from flytekit import task, workflow
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import RepeatedKFold, GridSearchCV, train_test_split, KFold
+from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 
 random_state = 7
 wandb_project = "RQ2RUN5"
