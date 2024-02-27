@@ -1,0 +1,10 @@
+scikit-learn
+pandas
+numpy
+chardet
+xgboost
+imbalanced-learn
+matplotlib
+lightgbm
+wandb
+smote-variants==0.7.3
