@@ -16,3 +16,6 @@ wget https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz
 helm repo add flyteorg https://flyteorg.github.io/flyte
 helm repo update
 helm install -n flyte -f starter.yaml --create-namespace flyte flyteorg/flyte-sandbox --create-namespace
+
+
+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

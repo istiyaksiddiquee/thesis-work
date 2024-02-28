@@ -23,5 +23,7 @@ COPY . /root
 ARG tag
 ENV FLYTE_INTERNAL_IMAGE $tag
 
-# docker build -t istiyaksiddiquee/flyte-for-kube:test01 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test01" .
-
+# docker build -t istiyaksiddiquee/flyte-for-thesis:RQ2RUN4 --build-arg="tag=istiyaksiddiquee/flyte-for-thesis:RQ2RUN4" .
+# docker push istiyaksiddiquee/flyte-for-thesis:RQ2RUN4
+# sudo ctr image pull docker.io/istiyaksiddiquee/flyte-for-thesis:RQ2RUN4
+# pyflyte run --remote --image istiyaksiddiquee/flyte-for-thesis:RQ2RUN4 script.py main_wf

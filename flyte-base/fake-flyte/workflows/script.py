@@ -28,10 +28,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 
 random_state = 7
-data_imputation = 1
-feature_selection = 1
-wandb_project = "RQ2RUN1"
-optimization_metric = "average_precision_score"
+data_imputation = 0
+feature_selection = 0
+wandb_project = "RQ2RUN4"
+optimization_metric = "average_precision"
 
 
 scorers_for_gridcv = {
@@ -78,8 +78,10 @@ def convert_scores_to_dict(custom_scores: CustomScore):
     metrics = {}
 
     metrics["accuracy"] = round(custom_scores.accuracy, 2)
-    metrics["precision"] = round(custom_scores.precision, 2)
-    metrics["recall"] = round(custom_scores.recall, 2)
+    metrics["precision_0"] = round(custom_scores.precision[0], 2)
+    metrics["precision_1"] = round(custom_scores.precision[1], 2)
+    metrics["recall_0"] = round(custom_scores.recall[0], 2)
+    metrics["recall_1"] = round(custom_scores.recall[1], 2)
     metrics["balanced_accuracy"] = round(custom_scores.balanced_accuracy, 2)
     metrics["fbeta"] = round(custom_scores.fbeta, 2)
     metrics["avg_precision"] = round(custom_scores.avg_precision, 2)
@@ -205,21 +207,23 @@ def nested_loop() -> list[CLFOutput]:
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
 
+            rf_output = fit_rf_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )
             logit_output = fit_logistic_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            )
-            rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            )
+            )            
+            
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             lgb_output = fit_lgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
+
             loop_outputs.append(logit_output)
             loop_outputs.append(dt_output)
             loop_outputs.append(rf_output)
@@ -244,9 +248,9 @@ def main_wf():
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    wandb.finish()
+    # wandb.init(project=wandb_project)
+    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    # wandb.finish()
 
     loop_outputs = nested_loop()
     refitt = refitting_models(loop_outputs=loop_outputs)
@@ -256,7 +260,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -371,13 +375,13 @@ def refitting_models(
     joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
     
     str_dum_artifact = wandb.Artifact(
-        "Stratified Dummy Cls",
+        "Stratified-Dummy-Cls",
         type="model",
         description="trained stratified dummy model"
     )
 
     most_freq_dum_artifact = wandb.Artifact(
-        "Most Freq Dummy Cls",
+        "Most-Freq-Dummy-Cls",
         type="model",
         description="trained most freq dummy model"
     )
@@ -528,7 +532,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -565,7 +569,7 @@ def fit_logistic_model(
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=logit_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -614,7 +618,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -645,7 +649,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=dt_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -692,7 +696,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -721,7 +725,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=rf_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -771,7 +775,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -803,7 +807,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=xgb_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -857,7 +861,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -893,7 +897,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=lgb_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )

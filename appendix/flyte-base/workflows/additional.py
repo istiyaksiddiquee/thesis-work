@@ -31,11 +31,11 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "AppendixRUN1"
-optimization_metric = "average_precision_score"
-data_folder = "segment"  
-# data_folder = "shuttle"  
-# data_folder = "one_yeast"
+wandb_project = "AppendixRUN3"
+optimization_metric = "average_precision"
+# data_folder = "segment"
+# data_folder = "shuttle"
+data_folder = "one_yeast"
 # data_folder = "three_yeast"
 
 
@@ -88,8 +88,10 @@ def convert_scores_to_dict(custom_scores: CustomScore):
     metrics = {}
 
     metrics["accuracy"] = round(custom_scores.accuracy, 2)
-    metrics["precision"] = round(custom_scores.precision, 2)
-    metrics["recall"] = round(custom_scores.recall, 2)
+    metrics["precision_0"] = round(custom_scores.precision[0], 2)
+    metrics["precision_1"] = round(custom_scores.precision[1], 2)
+    metrics["recall_0"] = round(custom_scores.recall[0], 2)
+    metrics["recall_1"] = round(custom_scores.recall[1], 2)
     metrics["balanced_accuracy"] = round(custom_scores.balanced_accuracy, 2)
     metrics["fbeta"] = round(custom_scores.fbeta, 2)
     metrics["avg_precision"] = round(custom_scores.avg_precision, 2)
@@ -117,22 +119,22 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
-    with open(file_path + "/x_train_val.pickle", "rb") as file:
+    with open(os.path.join(file_path, "x_train_val.pickle"), "rb") as file:
         X_train_val = pickle.load(file)
 
-    with open(file_path + "/y_train_val.pickle", "rb") as file:
+    with open(os.path.join(file_path, "y_train_val.pickle"), "rb") as file:
         y_train_val = pickle.load(file)
 
-    with open(file_path + "/x_test.pickle", "rb") as file:
+    with open(os.path.join(file_path, "x_test.pickle"), "rb") as file:
         X_test = pickle.load(file)
 
-    with open(file_path + "/y_test.pickle", "rb") as file:
+    with open(os.path.join(file_path, "y_test.pickle"), "rb") as file:
         y_test = pickle.load(file)
 
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
 
@@ -143,6 +145,9 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     logit_result = None
+
+    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # logit_grid = {
@@ -164,7 +169,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
             cv=total_cv,
             refit=optimization_metric,
             param_grid=logit_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -197,7 +202,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Decision Tree
 
@@ -209,13 +214,16 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     
     dt_result = None
 
+    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    
     try:
         dt_grid = {
             "criterion": ["gini", "entropy", "log_loss"],
             "splitter": ["best", "random"],
             "max_depth": [_ for _ in range(1, 5, 1)],
-            "min_samples_split": [_ for _ in range(1, 5, 1)],
-            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
+            "min_samples_split": [_ for _ in range(2, 5, 1)],
+            "min_samples_leaf": [_ for _ in range(2, 10, 1)],
         }
         # dt_grid = {"criterion": ["gini"]}
         dt_clf = DecisionTreeClassifier(random_state=random_state)
@@ -225,7 +233,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=dt_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -241,7 +249,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         dt_model = dt_result.best_estimator_
         joblib.dump(dt_model, "dt.joblib")
         dt_artifact = wandb.Artifact(
-            "Decision Tree Model",
+            "Decision-Tree-Model",
             type="model",
             description="selected DT model",
             metadata={
@@ -258,7 +266,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Random Forest
 
@@ -269,6 +277,8 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     rf_result = None
+    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # rf_grid = {"criterion": ["gini"]}
@@ -285,7 +295,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=rf_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -303,7 +313,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         rf_model = rf_result.best_estimator_
         joblib.dump(rf_model, "rf.joblib")
         rf_artifact = wandb.Artifact(
-            "Random Forest Model",
+            "Random-Forest-Model",
             type="model",
             description="selected RF model",
             metadata={
@@ -320,7 +330,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # XGB
 
@@ -331,6 +341,8 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     xgb_result = None
+    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # XGB
@@ -350,7 +362,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=xgb_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -367,7 +379,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         xgb_model = xgb_result.best_estimator_
         joblib.dump(xgb_model, "xgb.joblib")
         xgb_artifact = wandb.Artifact(
-            "XGB Model",
+            "XGB-Model",
             type="model",
             description="selected XGB model",
             metadata={
@@ -384,7 +396,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # LGB
 
@@ -393,6 +405,10 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled.")
+
+    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    
     lgb_result = None
     
     try:
@@ -416,7 +432,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=lgb_grid,
-            scoring=scorers_for_gridcv,
+            scoring=optimization_metric,
             verbose=0,
             n_jobs=-1,
         )
@@ -434,7 +450,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         lgb_model = lgb_result.best_estimator_
         joblib.dump(lgb_model, "lgb.joblib")
         lgb_artifact = wandb.Artifact(
-            "LGB Model",
+            "LGB-Model",
             type="model",
             description="selected LGB model",
             metadata={
@@ -451,12 +467,15 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN1")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN3")
 def fit_dummy_classifier(x: pd.Series, y: pd.Series):
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    y.replace(to_replace='positive', value=1, inplace=True)
+    y.replace(to_replace='negative', value=0, inplace=True)
 
     dummy_stratified = DummyClassifier(strategy="stratified")
     dummy_frequent = DummyClassifier(strategy="most_frequent")
@@ -468,9 +487,9 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series):
     joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
     joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
 
-    str_dum_artifact = wandb.Artifact("Stratified Dummy Cls", type="model", description="trained stratified dummy model")
+    str_dum_artifact = wandb.Artifact("Stratified-Dummy-Cls", type="model", description="trained stratified dummy model")
 
-    most_freq_dum_artifact = wandb.Artifact("Most Freq Dummy Cls", type="model", description="trained most freq dummy model")
+    most_freq_dum_artifact = wandb.Artifact("Most-Freq-Dummy-Cls", type="model", description="trained most freq dummy model")
 
     str_dum_artifact.add_file("stratified_dummy_cls.joblib")
     most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
@@ -492,50 +511,51 @@ def additional_workflow():
     logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
 
     try:
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Started", text="Your run has started. Mark the time.")
-        wandb.finish()
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Started", text="Your run has started. Mark the time.")
+        # wandb.finish()
 
         logging.info("ADDITIONAL_WORKFLOW: %s", "initiating processing, reading files")
         csv_path = os.path.join(".", data_folder)
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
-
+        print(y_train_val)
+        
         # call the nested loop to get all the trained models
         logging.info("ADDITIONAL_WORKFLOW: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
 
         logging.info("NESTED_LOOP: %s", "feature scaling")
         normalized_df = copy(X_train_val)
-        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        normalized_df["depth"] = np.log(normalized_df["depth"])
-        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+        # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+        # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+        # normalized_df["depth"] = np.log(normalized_df["depth"])
+        # normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+        # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train = scaler.fit_transform(normalized_df)
         scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train_val.to_numpy())
 
         logging.info("ADDITIONAL_WORKFLOW: %s", "entering model fitting task")
-        fit_logistic_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_dt_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_rf_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
+        fit_logistic_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_xgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
+        fit_rf_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_lgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_dummy_classifier(x=scaled_resampled_X_train, y=scaled_resampled_y_train)
         
         logging.info("ADDITIONAL_WORKFLOW: %s", "model fitting complete.")
 
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Finished", text="Your script is done. Mark the time.")
-        wandb.finish()
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Finished", text="Your script is done. Mark the time.")
+        # wandb.finish()
 
     except Exception as error:
         logging.info("ADDITIONAL_WORKFLOW: %s", "ERROR: some error happened, could not finish.")
         logging.info("ADDITIONAL_WORKFLOW: %s", error)
 
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Error", text="Something happened. Check the logs.")
-        wandb.finish()
+        # wandb.init(project=wandb_project)
+        # wandb.alert(title="Error", text="Something happened. Check the logs.")
+        # wandb.finish()
 
     return
 
