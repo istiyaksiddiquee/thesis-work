@@ -28,10 +28,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 
 random_state = 7
-data_imputation = 0
+data_imputation = 1
 feature_selection = 0
-wandb_project = "RQ2RUN4"
-optimization_metric = "average_precision"
+wandb_project = "RQ2RUN7"
+optimization_metric = "balanced_accuracy"
 
 
 scorers_for_gridcv = {
@@ -260,7 +260,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -532,7 +532,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -618,7 +618,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -696,7 +696,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -775,7 +775,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -861,7 +861,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 

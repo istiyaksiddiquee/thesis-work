@@ -31,8 +31,8 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "RQ2RUN6"
-optimization_metric = "average_precision"
+wandb_project = "RQ2RUN5"
+optimization_metric = "balanced_accuracy"
 # data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
@@ -120,22 +120,22 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
-    with open(os.path.join(file_path, "x_train_val.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "x_train_val_full.pickle"), "rb") as file:
         X_train_val = pickle.load(file)
 
-    with open(os.path.join(file_path, "y_train_val.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "y_train_val_full.pickle"), "rb") as file:
         y_train_val = pickle.load(file)
 
-    with open(os.path.join(file_path, "x_test.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "x_test_full.pickle"), "rb") as file:
         X_test = pickle.load(file)
 
-    with open(os.path.join(file_path, "y_test.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "y_test_full.pickle"), "rb") as file:
         y_test = pickle.load(file)
 
     return X_train_val, X_test, y_train_val, y_test
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
 
@@ -203,7 +203,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Decision Tree
 
@@ -267,7 +267,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Random Forest
 
@@ -331,7 +331,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # XGB
 
@@ -397,7 +397,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # LGB
 
@@ -468,7 +468,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:AppendixRUN4")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_dummy_classifier(x: pd.Series, y: pd.Series):
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -559,35 +559,6 @@ def additional_workflow():
 
     return
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN6")
-def final_alert():
-    
-    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
-    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
-    os.environ["WANDB__SERVICE_WAIT"] = "300"
-    
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Finished", text="Your script is done. Mark the time.")
-    wandb.finish()
-
-@workflow
-def main_wf():
-    
-    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
-    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
-    os.environ["WANDB__SERVICE_WAIT"] = "300"
-
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    wandb.finish()
-
-    loop_outputs = additional_workflow()
-    final_alert = final_alert()
-    loop_outputs >> final_alert
-
-    logging.info("MAIN_WF: %s", f"workflow finished.")
-    
-    return
 
 if __name__ == "__main__":
-    main_wf()
+    additional_workflow()

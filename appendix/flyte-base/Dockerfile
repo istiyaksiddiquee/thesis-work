@@ -23,6 +23,7 @@ COPY . /root
 ARG tag
 ENV FLYTE_INTERNAL_IMAGE $tag
 
-# docker build -t istiyaksiddiquee/flyte-for-thesis:AppendixRUN4 --build-arg="tag=istiyaksiddiquee/flyte-for-thesis:AppendixRUN4" .
-# docker push istiyaksiddiquee/flyte-for-thesis:AppendixRUN1
-# sudo ctr image pull docker.io/istiyaksiddiquee/flyte-for-thesis:AppendixRUN1
+# docker build -t istiyaksiddiquee/flyte-for-thesis:RQ2RUN5 --build-arg="tag=istiyaksiddiquee/flyte-for-thesis:RQ2RUN5" .
+# docker push istiyaksiddiquee/flyte-for-thesis:RQ2RUN5
+# sudo ctr image pull docker.io/istiyaksiddiquee/flyte-for-thesis:RQ2RUN5
+# pyflyte run --remote --image istiyaksiddiquee/flyte-for-thesis:RQ2RUN5 additional.py additional_workflow
