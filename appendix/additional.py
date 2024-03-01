@@ -31,12 +31,13 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "AppendixRUN4"
+wandb_project = "RQ2RUN6"
 optimization_metric = "average_precision"
 # data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
-data_folder = "three_yeast"
+# data_folder = "three_yeast"
+data_folder = "thesis"
 
 
 scorers_for_gridcv = {
@@ -525,11 +526,13 @@ def additional_workflow():
 
         logging.info("NESTED_LOOP: %s", "feature scaling")
         normalized_df = copy(X_train_val)
-        # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        # normalized_df["depth"] = np.log(normalized_df["depth"])
-        # normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+        normalized_df["depth"] = np.log(normalized_df["depth"])
+        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+        normalized_df["size"] = np.log(normalized_df["size"])
+        normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train = scaler.fit_transform(normalized_df)
@@ -545,19 +548,46 @@ def additional_workflow():
         
         logging.info("ADDITIONAL_WORKFLOW: %s", "model fitting complete.")
 
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Finished", text="Your script is done. Mark the time.")
-        # wandb.finish()
 
     except Exception as error:
         logging.info("ADDITIONAL_WORKFLOW: %s", "ERROR: some error happened, could not finish.")
         logging.info("ADDITIONAL_WORKFLOW: %s", error)
 
-        # wandb.init(project=wandb_project)
-        # wandb.alert(title="Error", text="Something happened. Check the logs.")
-        # wandb.finish()
+        wandb.init(project=wandb_project)
+        wandb.alert(title="Error", text="Something happened. Check the logs.")
+        wandb.finish()
 
     return
 
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN6")
+def final_alert():
+    
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+    
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Finished", text="Your script is done. Mark the time.")
+    wandb.finish()
+
+@workflow
+def main_wf():
+    
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    wandb.finish()
+
+    loop_outputs = additional_workflow()
+    final_alert = final_alert()
+    loop_outputs >> final_alert
+
+    logging.info("MAIN_WF: %s", f"workflow finished.")
+    
+    return
+
 if __name__ == "__main__":
-    additional_workflow()
+    main_wf()
