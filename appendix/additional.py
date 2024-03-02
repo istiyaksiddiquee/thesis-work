@@ -135,6 +135,28 @@ def read_pickled_input_files(file_path: str):
     return X_train_val, X_test, y_train_val, y_test
 
 
+def process_gridcv_results(cv_results, group, total_cv=5):
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+    
+    
+    for i in range(0, total_cv):
+        acc_score = round(cv_results['mean_test_accuracy_score'][i], 2)
+        prec_0 = round(cv_results['mean_test_precision_0'][i], 2)
+        prec_1 = round(cv_results['mean_test_precision_1'][i], 2)
+        rec_0 = round(cv_results['mean_test_recall_0'][i], 2)
+        rec_1 = round(cv_results['mean_test_recall_1'][i], 2)
+        fbeta = round(cv_results['mean_test_fbeta_score'][i], 2)
+        ba_score = round(cv_results['mean_test_balanced_accuracy_score'][i], 2)
+        avg_prec = round(cv_results['mean_test_average_precision_score'][i], 2)
+        roc_auc = round(cv_results['mean_test_roc_auc'][i], 2)
+        
+        wandb.init(project='test01', group=group, job_type="epoch_"+ str(i+1))
+        wandb.log({"accuracy": acc_score, "precision_0": prec_0, "precision_1": prec_1, "recall_0": rec_0, "recall_1": rec_1, "fbeta": fbeta, "balanced_accuracy": ba_score, "average_precision": avg_prec, "roc_auc": roc_auc})
+        
+    return
+
 @task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
@@ -182,7 +204,10 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
         logging.error("An exception occurred:", error)
 
     if logit_result != None:
+        process_gridcv_results(logit_result.cv_results_, "logit")
+        
         wandb.init(project=wandb_project, group="logit", job_type="final")
+        
         logit_model = logit_result.best_estimator_
         joblib.dump(logit_model, "logit.joblib")
         logit_artifact = wandb.Artifact(
@@ -246,6 +271,8 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if dt_result != None:
+        process_gridcv_results(dt_result.cv_results_, "logit")
+        
         wandb.init(project=wandb_project, group="dt", job_type="final")
         dt_model = dt_result.best_estimator_
         joblib.dump(dt_model, "dt.joblib")
@@ -308,7 +335,8 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if rf_result != None:
-
+        process_gridcv_results(rf_result.cv_results_, "logit")
+        
         wandb.init(project=wandb_project, group="rf", job_type="final")
 
         rf_model = rf_result.best_estimator_
@@ -375,6 +403,8 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if xgb_result != None:
+        process_gridcv_results(xgb_result.cv_results_, "logit")
+        
         wandb.init(project=wandb_project, group="xgb", job_type="final")
 
         xgb_model = xgb_result.best_estimator_
@@ -445,7 +475,8 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if lgb_result != None:
-
+        process_gridcv_results(lgb_result.cv_results_, "logit")
+        
         wandb.init(project=wandb_project, group="lgb", job_type="final")
 
         lgb_model = lgb_result.best_estimator_
@@ -559,6 +590,37 @@ def additional_workflow():
 
     return
 
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+def finishing_alert() -> None:
+
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Finished", text="The run has finished. Check the results.")
+    wandb.finish()
+    
+    return 
+
+
+@workflow
+def main_wf():
+    
+    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
+    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    # wandb.init(project=wandb_project)
+    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    # wandb.finish()
+
+    loop_outputs = additional_workflow()
+    refitt = finishing_alert()
+    loop_outputs >> refitt
+
+    logging.info("MAIN_WF: %s", f"workflow finished.")
+    return
 
 if __name__ == "__main__":
-    additional_workflow()
+    main_wf()
