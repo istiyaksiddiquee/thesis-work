@@ -31,74 +31,41 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "RQ2RUN5"
-optimization_metric = "balanced_accuracy"
+wandb_project = "RQ2RUN7"
+optimization_metric = "balanced_accuracy_score"
 # data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
 # data_folder = "three_yeast"
 data_folder = "thesis"
 
+def precision_0(y, y_pred):
+    returned_arr = precision_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[0]
+
+def precision_1(y, y_pred):
+    returned_arr = precision_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[1]
+
+def recall_0(y, y_pred):
+    returned_arr = recall_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[0]
+
+def recall_1(y, y_pred):
+    returned_arr = recall_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[1]
 
 scorers_for_gridcv = {
     "accuracy_score": make_scorer(accuracy_score),
-    "precision_score": make_scorer(precision_score, average=None),
-    "recall_score": make_scorer(recall_score, average=None),
+    "precision_0": make_scorer(precision_0, greater_is_better=True),
+    "precision_1": make_scorer(precision_1, greater_is_better=True),
+    "recall_0": make_scorer(recall_0, greater_is_better=True),
+    "recall_1": make_scorer(recall_1, greater_is_better=True),
     "fbeta_score": make_scorer(fbeta_score, beta=0.5),
     "balanced_accuracy_score": make_scorer(balanced_accuracy_score),
     "average_precision_score": make_scorer(average_precision_score),
-    "roc_auc": make_scorer(roc_auc_score),
+    "roc_auc": make_scorer(roc_auc_score)
 }
-
-class CustomScore:
-    def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc) -> None:
-        self.accuracy = accuracy
-        self.precision = precision
-        self.recall = recall
-        self.balanced_accuracy = balanced_accuracy
-        self.fbeta = fbeta
-        self.avg_precision = avg_precision
-        self.roc_auc = roc_auc
-
-    def get_default_metric(self) -> float:
-        return self.avg_precision
-
-
-class OutputClass:
-    def __init__(self, logit, dt, rf, xgb, lgb) -> None:
-        self.logit = logit
-        self.dt = dt
-        self.rf = rf
-        self.xgb = xgb
-        self.lgb = lgb
-
-
-def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
-    accuracy = accuracy_score(y_real, y_pred)
-    precision = precision_score(y_real, y_pred, average=None)
-    recall = recall_score(y_real, y_pred, average=None)
-    balanced_accuracy = balanced_accuracy_score(y_real, y_pred)
-    fbeta = fbeta_score(y_real, y_pred, beta=0.5)
-    avg_precision = average_precision_score(y_real, y_scores)
-    roc_auc = roc_auc_score(y_real, y_scores)
-
-    return CustomScore(accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc)
-
-
-def convert_scores_to_dict(custom_scores: CustomScore):
-    metrics = {}
-
-    metrics["accuracy"] = round(custom_scores.accuracy, 2)
-    metrics["precision_0"] = round(custom_scores.precision[0], 2)
-    metrics["precision_1"] = round(custom_scores.precision[1], 2)
-    metrics["recall_0"] = round(custom_scores.recall[0], 2)
-    metrics["recall_1"] = round(custom_scores.recall[1], 2)
-    metrics["balanced_accuracy"] = round(custom_scores.balanced_accuracy, 2)
-    metrics["fbeta"] = round(custom_scores.fbeta, 2)
-    metrics["avg_precision"] = round(custom_scores.avg_precision, 2)
-    metrics["roc_auc"] = round(custom_scores.roc_auc, 2)
-
-    return metrics
 
 
 def oversample_data(X: pd.Series, y: pd.Series):
@@ -152,12 +119,13 @@ def process_gridcv_results(cv_results, group, total_cv=5):
         avg_prec = round(cv_results['mean_test_average_precision_score'][i], 2)
         roc_auc = round(cv_results['mean_test_roc_auc'][i], 2)
         
-        wandb.init(project='test01', group=group, job_type="epoch_"+ str(i+1))
+        wandb.init(project=wandb_project, group=group, job_type="epoch_"+ str(i+1))
         wandb.log({"accuracy": acc_score, "precision_0": prec_0, "precision_1": prec_1, "recall_0": rec_0, "recall_1": rec_1, "fbeta": fbeta, "balanced_accuracy": ba_score, "average_precision": avg_prec, "roc_auc": roc_auc})
+        wandb.finish()
         
     return
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
 
@@ -192,7 +160,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
             cv=total_cv,
             refit=optimization_metric,
             param_grid=logit_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -228,7 +196,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Decision Tree
 
@@ -259,7 +227,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=dt_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -271,7 +239,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if dt_result != None:
-        process_gridcv_results(dt_result.cv_results_, "logit")
+        process_gridcv_results(dt_result.cv_results_, "dt")
         
         wandb.init(project=wandb_project, group="dt", job_type="final")
         dt_model = dt_result.best_estimator_
@@ -294,7 +262,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Random Forest
 
@@ -323,7 +291,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=rf_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -335,7 +303,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if rf_result != None:
-        process_gridcv_results(rf_result.cv_results_, "logit")
+        process_gridcv_results(rf_result.cv_results_, "rf")
         
         wandb.init(project=wandb_project, group="rf", job_type="final")
 
@@ -359,7 +327,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # XGB
 
@@ -391,7 +359,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=xgb_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -403,7 +371,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if xgb_result != None:
-        process_gridcv_results(xgb_result.cv_results_, "logit")
+        process_gridcv_results(xgb_result.cv_results_, "xgb")
         
         wandb.init(project=wandb_project, group="xgb", job_type="final")
 
@@ -427,7 +395,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # LGB
 
@@ -463,7 +431,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             cv=total_cv,
             refit=optimization_metric,
             param_grid=lgb_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -475,7 +443,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if lgb_result != None:
-        process_gridcv_results(lgb_result.cv_results_, "logit")
+        process_gridcv_results(lgb_result.cv_results_, "lgb")
         
         wandb.init(project=wandb_project, group="lgb", job_type="final")
 
@@ -499,7 +467,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def fit_dummy_classifier(x: pd.Series, y: pd.Series):
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -550,7 +518,6 @@ def additional_workflow():
         logging.info("ADDITIONAL_WORKFLOW: %s", "initiating processing, reading files")
         csv_path = os.path.join(".", data_folder)
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
-        print(y_train_val)
         
         # call the nested loop to get all the trained models
         logging.info("ADDITIONAL_WORKFLOW: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
@@ -570,8 +537,8 @@ def additional_workflow():
         scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train_val.to_numpy())
 
         logging.info("ADDITIONAL_WORKFLOW: %s", "entering model fitting task")
-        fit_dt_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_logistic_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
+        fit_dt_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_xgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_rf_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
         fit_lgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
@@ -590,7 +557,7 @@ def additional_workflow():
 
     return
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN5")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
 def finishing_alert() -> None:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
