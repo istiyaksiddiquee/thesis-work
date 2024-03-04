@@ -271,7 +271,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:

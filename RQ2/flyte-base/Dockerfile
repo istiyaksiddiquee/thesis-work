@@ -26,5 +26,7 @@ ENV FLYTE_INTERNAL_IMAGE $tag
 # docker build -t istiyaksiddiquee/flyte-for-thesis:RQ2RUN3 --build-arg="tag=istiyaksiddiquee/flyte-for-thesis:RQ2RUN3" .
 # docker push istiyaksiddiquee/flyte-for-thesis:RQ2RUN3
 # sudo ctr image pull docker.io/istiyaksiddiquee/flyte-for-thesis:RQ2RUN3
+# cd ../image
 # pyflyte run --remote --image istiyaksiddiquee/flyte-for-thesis:RQ2RUN3 script.py main_wf
 # http://localhost:8088/console/projects/flytesnacks/domains/development/executions/fa3367afd57724264a3f
+# http://localhost:8088/console/projects/flytesnacks/domains/development/executions/f59f05451d2a4402d889

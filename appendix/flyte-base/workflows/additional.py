@@ -31,8 +31,8 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "RQ2RUN7"
-optimization_metric = "balanced_accuracy_score"
+wandb_project = "RQ2RUN6"
+optimization_metric = "average_precision_score"
 # data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
@@ -102,29 +102,32 @@ def read_pickled_input_files(file_path: str):
     return X_train_val, X_test, y_train_val, y_test
 
 
-def process_gridcv_results(cv_results, group, total_cv=5):
-    os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
-    os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
-    os.environ["WANDB__SERVICE_WAIT"] = "300"
+def process_gridcv_results(cv_result_df):
     
-    
-    for i in range(0, total_cv):
-        acc_score = round(cv_results['mean_test_accuracy_score'][i], 2)
-        prec_0 = round(cv_results['mean_test_precision_0'][i], 2)
-        prec_1 = round(cv_results['mean_test_precision_1'][i], 2)
-        rec_0 = round(cv_results['mean_test_recall_0'][i], 2)
-        rec_1 = round(cv_results['mean_test_recall_1'][i], 2)
-        fbeta = round(cv_results['mean_test_fbeta_score'][i], 2)
-        ba_score = round(cv_results['mean_test_balanced_accuracy_score'][i], 2)
-        avg_prec = round(cv_results['mean_test_average_precision_score'][i], 2)
-        roc_auc = round(cv_results['mean_test_roc_auc'][i], 2)
+    mean_test_accuracy_score = round(cv_result_df['mean_test_accuracy_score'].iloc[0], 2)
+    mean_test_precision_0 = round(cv_result_df['mean_test_precision_0'].iloc[0], 2)
+    mean_test_precision_1 = round(cv_result_df['mean_test_precision_1'].iloc[0], 2)
+    mean_test_recall_0 = round(cv_result_df['mean_test_recall_0'].iloc[0], 2)
+    mean_test_recall_1 = round(cv_result_df['mean_test_recall_1'].iloc[0], 2)
+    mean_test_fbeta_score = round(cv_result_df['mean_test_fbeta_score'].iloc[0], 2)
+    mean_test_balanced_accuracy_score = round(cv_result_df['mean_test_balanced_accuracy_score'].iloc[0], 2)
+    mean_test_average_precision_score = round(cv_result_df['mean_test_average_precision_score'].iloc[0], 2)
+    mean_test_roc_auc = round(cv_result_df['mean_test_roc_auc'].iloc[0], 2)
         
-        wandb.init(project=wandb_project, group=group, job_type="epoch_"+ str(i+1))
-        wandb.log({"accuracy": acc_score, "precision_0": prec_0, "precision_1": prec_1, "recall_0": rec_0, "recall_1": rec_1, "fbeta": fbeta, "balanced_accuracy": ba_score, "average_precision": avg_prec, "roc_auc": roc_auc})
-        
-    return
+    return {
+        "grid_accuracy": mean_test_accuracy_score, 
+        "grid_precision_0": mean_test_precision_0, 
+        "grid_precision_1": mean_test_precision_1, 
+        "grid_recall_0": mean_test_recall_0, 
+        "grid_recall_1": mean_test_recall_1, 
+        "grid_fbeta": mean_test_fbeta_score, 
+        "grid_balanced_accuracy": mean_test_balanced_accuracy_score,
+        "grid_average_precision": mean_test_average_precision_score, 
+        "grid_roc_auc": mean_test_roc_auc
+    }
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+    
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
 
@@ -136,8 +139,8 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     
     logit_result = None
 
-    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # logit_grid = {
@@ -171,31 +174,47 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
         logging.error("An exception occurred:", error)
 
     if logit_result != None:
-        process_gridcv_results(logit_result.cv_results_, "logit")
         
         wandb.init(project=wandb_project, group="logit", job_type="final")
+        
+        logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
+        logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(logit_cv_result_df))
+        wandb.log(
+            {
+                "best_parameters": logit_result.best_params_,
+                "best_score": logit_result.best_score_
+            }
+        )
         
         logit_model = logit_result.best_estimator_
         joblib.dump(logit_model, "logit.joblib")
         logit_artifact = wandb.Artifact(
             "Logistic-Model",
             type="model",
-            description="selected Logistic model",
-            metadata={
-                "best_parameters": logit_result.best_params_,
-                "best_score": logit_result.best_score_
-            },
+            description="selected Logistic model"
         )
 
         logit_artifact.add_file("logit.joblib")
         wandb.log_artifact(logit_artifact)
+        
+        logit_cv_result_artifact = wandb.Artifact(
+            "logit_cv_result_artifact", 
+            type="cv_result"
+        )
+        
+        logit_cv_file_name = f"./logit_cv_result.csv"
+        logit_cv_result_df.to_csv(logit_cv_file_name)
+        logit_cv_result_artifact.add_file(logit_cv_file_name)
+        wandb.log_artifact(logit_cv_result_artifact)
+        
         wandb.finish()
 
     logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Decision Tree
 
@@ -207,8 +226,8 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     
     dt_result = None
 
-    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
     
     try:
         dt_grid = {
@@ -238,9 +257,19 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if dt_result != None:
-        process_gridcv_results(dt_result.cv_results_, "logit")
         
         wandb.init(project=wandb_project, group="dt", job_type="final")
+        
+        dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
+        dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(dt_cv_result_df))
+        wandb.log(
+            {
+                "best_parameters": dt_result.best_params_,
+                "best_score": dt_result.best_score_
+            }
+        )
+        
         dt_model = dt_result.best_estimator_
         joblib.dump(dt_model, "dt.joblib")
         dt_artifact = wandb.Artifact(
@@ -255,13 +284,24 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
 
         dt_artifact.add_file("dt.joblib")
         wandb.log_artifact(dt_artifact)
+        
+        dt_cv_result_artifact = wandb.Artifact(
+            "dt_cv_result_artifact", 
+            type="cv_result"
+        )
+        
+        dt_cv_file_name = f"./dt_cv_result.csv"
+        dt_cv_result_df.to_csv(dt_cv_file_name)
+        dt_cv_result_artifact.add_file(dt_cv_file_name)
+        wandb.log_artifact(dt_cv_result_artifact)
+        
         wandb.finish()
 
     logging.info("FIT_DT_MODEL: %s", "dt run completed.")
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Random Forest
 
@@ -272,8 +312,8 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     rf_result = None
-    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # rf_grid = {"criterion": ["gini"]}
@@ -302,10 +342,18 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if rf_result != None:
-        process_gridcv_results(rf_result.cv_results_, "logit")
-        
         wandb.init(project=wandb_project, group="rf", job_type="final")
 
+        rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
+        rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(rf_cv_result_df))
+        wandb.log(
+            {
+                "best_parameters": rf_result.best_params_,
+                "best_score": rf_result.best_score_
+            }
+        )
+        
         rf_model = rf_result.best_estimator_
         joblib.dump(rf_model, "rf.joblib")
         rf_artifact = wandb.Artifact(
@@ -320,13 +368,24 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
 
         rf_artifact.add_file("rf.joblib")
         wandb.log_artifact(rf_artifact)
+        
+        rf_cv_result_artifact = wandb.Artifact(
+            "rf_cv_result_artifact", 
+            type="cv_result"
+        )
+        
+        rf_cv_file_name = f"./rf_cv_result.csv"
+        rf_cv_result_df.to_csv(rf_cv_file_name)
+        rf_cv_result_artifact.add_file(rf_cv_file_name)
+        wandb.log_artifact(rf_cv_result_artifact)
+        
         wandb.finish()
 
     logging.info("FIT_RF_MODEL: %s", "rf run completed.")
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # XGB
 
@@ -337,8 +396,8 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     xgb_result = None
-    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # XGB
@@ -370,10 +429,18 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if xgb_result != None:
-        process_gridcv_results(xgb_result.cv_results_, "logit")
-        
         wandb.init(project=wandb_project, group="xgb", job_type="final")
 
+        xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
+        xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(xgb_cv_result_df))
+        wandb.log(
+            {
+                "best_parameters": xgb_result.best_params_,
+                "best_score": xgb_result.best_score_
+            }
+        )
+        
         xgb_model = xgb_result.best_estimator_
         joblib.dump(xgb_model, "xgb.joblib")
         xgb_artifact = wandb.Artifact(
@@ -388,13 +455,24 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
 
         xgb_artifact.add_file("xgb.joblib")
         wandb.log_artifact(xgb_artifact)
+        
+        xgb_cv_result_artifact = wandb.Artifact(
+            "xgb_cv_result_artifact", 
+            type="cv_result"
+        )
+        
+        xgb_cv_file_name = f"./xgb_cv_result.csv"
+        xgb_cv_result_df.to_csv(xgb_cv_file_name)
+        xgb_cv_result_artifact.add_file(xgb_cv_file_name)
+        wandb.log_artifact(xgb_cv_result_artifact)
+        
         wandb.finish()
 
     logging.info("FIT_XGB_MODEL: %s", "xgb run completed.")
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # LGB
 
@@ -404,8 +482,8 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     
     logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled.")
 
-    y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
+    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
+    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
     
     lgb_result = None
     
@@ -442,10 +520,18 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         logging.error("An exception occurred:", error)
 
     if lgb_result != None:
-        process_gridcv_results(lgb_result.cv_results_, "logit")
-        
         wandb.init(project=wandb_project, group="lgb", job_type="final")
 
+        lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
+        lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(lgb_cv_result_df))
+        wandb.log(
+            {
+                "best_parameters": lgb_result.best_params_,
+                "best_score": lgb_result.best_score_
+            }
+        )
+        
         lgb_model = lgb_result.best_estimator_
         joblib.dump(lgb_model, "lgb.joblib")
         lgb_artifact = wandb.Artifact(
@@ -460,21 +546,32 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
 
         lgb_artifact.add_file("lgb.joblib")
         wandb.log_artifact(lgb_artifact)
+        
+        lgb_cv_result_artifact = wandb.Artifact(
+            "lgb_cv_result_artifact", 
+            type="cv_result"
+        )
+        
+        lgb_cv_file_name = f"./lgb_cv_result.csv"
+        lgb_cv_result_df.to_csv(lgb_cv_file_name)
+        lgb_cv_result_artifact.add_file(lgb_cv_file_name)
+        wandb.log_artifact(lgb_cv_result_artifact)
+        
         wandb.finish()
 
     logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_dummy_classifier(x: pd.Series, y: pd.Series):
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    y.replace(to_replace='positive', value=1, inplace=True)
-    y.replace(to_replace='negative', value=0, inplace=True)
+    # y.replace(to_replace='positive', value=1, inplace=True)
+    # y.replace(to_replace='negative', value=0, inplace=True)
 
     dummy_stratified = DummyClassifier(strategy="stratified")
     dummy_frequent = DummyClassifier(strategy="most_frequent")
@@ -556,7 +653,7 @@ def additional_workflow():
 
     return
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def finishing_alert() -> None:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
