@@ -281,250 +281,260 @@ def refitting_models(
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
-
-    csv_path = "/root/workflows"
-    X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
-
-    loop_counter = 0
-
-    logit_epoch_id = -1
-    rf_epoch_id = -1
-    dt_epoch_id = -1
-    xgb_epoch_id = -1
-    lgb_epoch_id = -1
-
-    logit_avg_prec = 0
-    dt_avg_prec = 0
-    rf_avg_prec = 0
-    xgb_avg_prec = 0
-    lgb_avg_prec = 0
-
-    trained_dt_model = None
-    trained_rf_model = None
-    trained_logit_model = None
-    trained_xgb_model = None
-    trained_lgb_model = None
-
-    loop_counter = 0
-    total_iteration = int (len(loop_outputs) / 5)
     
-    for i in range(total_iteration):
+    try:
+        csv_path = "/root/workflows"
+        X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
+
+        loop_counter = 0
+
+        logit_epoch_id = -1
+        rf_epoch_id = -1
+        dt_epoch_id = -1
+        xgb_epoch_id = -1
+        lgb_epoch_id = -1
+
+        logit_avg_prec = 0
+        dt_avg_prec = 0
+        rf_avg_prec = 0
+        xgb_avg_prec = 0
+        lgb_avg_prec = 0
+
+        trained_dt_model = None
+        trained_rf_model = None
+        trained_logit_model = None
+        trained_xgb_model = None
+        trained_lgb_model = None
+
+        loop_counter = 0
+        total_iteration = int (len(loop_outputs) / 5)
         
-        index = 5 * i + 0
-        logit_output = loop_outputs[index]
+        for i in range(total_iteration):
+            
+            index = 5 * i + 0
+            logit_output = loop_outputs[index]
 
-        index = 5 * i + 1
-        dt_output = loop_outputs[index]
+            index = 5 * i + 1
+            dt_output = loop_outputs[index]
+            
+            index = 5 * i + 2
+            rf_output = loop_outputs[index]
+            
+            index = 5 * i + 3
+            xgb_output = loop_outputs[index]
+            
+            index = 5 * i + 4
+            lgb_output = loop_outputs[index]
+            
+            if logit_output != None and logit_output.score != None:
+                if logit_avg_prec < logit_output.score:
+                    logit_avg_prec = logit_output.score
+                    trained_logit_model = logit_output.gridsearch_dict
+                    logit_epoch_id = loop_counter
+
+            if dt_output != None and dt_output.score != None: 
+                if dt_avg_prec < dt_output.score:
+                    dt_avg_prec = dt_output.score
+                    trained_dt_model = dt_output.gridsearch_dict
+                    dt_epoch_id = loop_counter
+
+            if rf_output != None and rf_output.score != None:
+                if rf_avg_prec < rf_output.score:
+                    rf_avg_prec = rf_output.score
+                    trained_rf_model = rf_output.gridsearch_dict
+                    rf_epoch_id = loop_counter
+
+            if xgb_output != None and xgb_output.score != None:
+                if xgb_avg_prec < xgb_output.score:
+                    xgb_avg_prec = xgb_output.score
+                    trained_xgb_model = xgb_output.gridsearch_dict
+                    xgb_epoch_id = loop_counter
+
+            if lgb_output != None and lgb_output.score != None: 
+                if lgb_avg_prec < lgb_output.score:
+                    lgb_avg_prec = lgb_output.score
+                    trained_lgb_model = lgb_output.gridsearch_dict
+                    lgb_epoch_id = loop_counter
+            
+            loop_counter += 1
+
+        logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
+        normalized_df = copy(X_train_val)
+        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+        normalized_df["depth"] = np.log(normalized_df["depth"])
+        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
         
-        index = 5 * i + 2
-        rf_output = loop_outputs[index]
+        if feature_selection != 1:
+            normalized_df["size"] = np.log(normalized_df["size"])
+            normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+
+        scaler = StandardScaler().set_output(transform="pandas")
+        scaled_X_train_val = scaler.fit_transform(normalized_df)
+        scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
         
-        index = 5 * i + 3
-        xgb_output = loop_outputs[index]
+        if data_imputation != 1:
+            scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
+
+        logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
-        index = 5 * i + 4
-        lgb_output = loop_outputs[index]
+        stratified_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "stratified")
+        most_freq_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "most_frequent")
         
-        if logit_output != None and logit_output.score != None:
-            if logit_avg_prec < logit_output.score:
-                logit_avg_prec = logit_output.score
-                trained_logit_model = logit_output.gridsearch_dict
-                logit_epoch_id = loop_counter
-
-        if dt_output != None and dt_output.score != None: 
-            if dt_avg_prec < dt_output.score:
-                dt_avg_prec = dt_output.score
-                trained_dt_model = dt_output.gridsearch_dict
-                dt_epoch_id = loop_counter
-
-        if rf_output != None and rf_output.score != None:
-            if rf_avg_prec < rf_output.score:
-                rf_avg_prec = rf_output.score
-                trained_rf_model = rf_output.gridsearch_dict
-                rf_epoch_id = loop_counter
-
-        if xgb_output != None and xgb_output.score != None:
-            if xgb_avg_prec < xgb_output.score:
-                xgb_avg_prec = xgb_output.score
-                trained_xgb_model = xgb_output.gridsearch_dict
-                xgb_epoch_id = loop_counter
-
-        if lgb_output != None and lgb_output.score != None: 
-            if lgb_avg_prec < lgb_output.score:
-                lgb_avg_prec = lgb_output.score
-                trained_lgb_model = lgb_output.gridsearch_dict
-                lgb_epoch_id = loop_counter
+        wandb.init(project=wandb_project, group="dummy", job_type="final")
+        joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
+        joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
         
-        loop_counter += 1
-
-    logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
-    normalized_df = copy(X_train_val)
-    cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-    cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-    normalized_df["depth"] = np.log(normalized_df["depth"])
-    normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-    normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-    
-    if feature_selection != 1:
-        normalized_df["size"] = np.log(normalized_df["size"])
-        normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
-
-    scaler = StandardScaler().set_output(transform="pandas")
-    scaled_X_train_val = scaler.fit_transform(normalized_df)
-    scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
-    
-    if data_imputation != 1:
-        scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
-
-    logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
-    
-    stratified_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "stratified")
-    most_freq_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "most_frequent")
-    
-    wandb.init(project=wandb_project, group="dummy", job_type="final")
-    joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
-    joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
-    
-    str_dum_artifact = wandb.Artifact(
-        "Stratified-Dummy-Cls",
-        type="model",
-        description="trained stratified dummy model"
-    )
-
-    most_freq_dum_artifact = wandb.Artifact(
-        "Most-Freq-Dummy-Cls",
-        type="model",
-        description="trained most freq dummy model"
-    )
-    
-    str_dum_artifact.add_file("stratified_dummy_cls.joblib")
-    most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
-    
-    wandb.log_artifact(str_dum_artifact)
-    wandb.log_artifact(most_freq_dum_artifact)
-    wandb.finish()
-
-    if trained_logit_model != None:
-        # store logit model
-        logging.info("REFITTING_MODELS: %s", "processing logit model.")
-        logistic = LogisticRegression(**trained_logit_model)
-        refit_logit = logistic.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
-
-        wandb.init(project=wandb_project, group="logit", job_type="final")
-        joblib.dump(refit_logit, "logit.joblib")
-        logit_artifact = wandb.Artifact(
-            "Logistic-Model",
+        str_dum_artifact = wandb.Artifact(
+            "Stratified-Dummy-Cls",
             type="model",
-            description="selected Logistic model",
-            metadata={
-                "parameters": trained_logit_model,
-                "epoch": logit_epoch_id,
-            },
+            description="trained stratified dummy model"
         )
 
-        logit_artifact.add_file("logit.joblib")
-        wandb.log_artifact(logit_artifact)
-        wandb.finish()
-
-    if trained_dt_model != None:
-
-        # store dt model
-        logging.info("REFITTING_MODELS: %s", "processing dt model.")
-        dt = DecisionTreeClassifier(**trained_dt_model)
-        refit_dt = dt.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
-
-        wandb.init(project=wandb_project, group="dt", job_type="final")
-        joblib.dump(refit_dt, "dt.joblib")
-        dt_artifact = wandb.Artifact(
-            "DT-Model",
+        most_freq_dum_artifact = wandb.Artifact(
+            "Most-Freq-Dummy-Cls",
             type="model",
-            description="selected DT model",
-            metadata={
-                "parameters": trained_dt_model,
-                "epoch": dt_epoch_id,
-            },
+            description="trained most freq dummy model"
         )
-
-        dt_artifact.add_file("dt.joblib")
-        wandb.log_artifact(dt_artifact)
+        
+        str_dum_artifact.add_file("stratified_dummy_cls.joblib")
+        most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
+        
+        wandb.log_artifact(str_dum_artifact)
+        wandb.log_artifact(most_freq_dum_artifact)
         wandb.finish()
 
-    if trained_rf_model != None:
+        if trained_logit_model != None:
+            # store logit model
+            logging.info("REFITTING_MODELS: %s", "processing logit model.")
+            logistic = LogisticRegression(**trained_logit_model)
+            refit_logit = logistic.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
 
-        # store rf model
-        logging.info("REFITTING_MODELS: %s", "processing rf model.")
-        rf = RandomForestClassifier(**trained_rf_model)
-        refit_rf = rf.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            wandb.init(project=wandb_project, group="logit", job_type="final")
+            joblib.dump(refit_logit, "logit.joblib")
+            logit_artifact = wandb.Artifact(
+                "Logistic-Model",
+                type="model",
+                description="selected Logistic model",
+                metadata={
+                    "parameters": trained_logit_model,
+                    "epoch": logit_epoch_id,
+                },
+            )
 
-        wandb.init(project=wandb_project, group="rf", job_type="final")
-        joblib.dump(refit_rf, "rf.joblib")
-        rf_artifact = wandb.Artifact(
-            "RF-Model",
-            type="model",
-            description="selected RF model",
-            metadata={
-                "parameters": trained_rf_model,
-                "epoch": rf_epoch_id,
-            },
-        )
+            logit_artifact.add_file("logit.joblib")
+            wandb.log_artifact(logit_artifact)
+            wandb.finish()
 
-        rf_artifact.add_file("rf.joblib")
-        wandb.log_artifact(rf_artifact)
+        if trained_dt_model != None:
+
+            # store dt model
+            logging.info("REFITTING_MODELS: %s", "processing dt model.")
+            dt = DecisionTreeClassifier(**trained_dt_model)
+            refit_dt = dt.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+
+            wandb.init(project=wandb_project, group="dt", job_type="final")
+            joblib.dump(refit_dt, "dt.joblib")
+            dt_artifact = wandb.Artifact(
+                "DT-Model",
+                type="model",
+                description="selected DT model",
+                metadata={
+                    "parameters": trained_dt_model,
+                    "epoch": dt_epoch_id,
+                },
+            )
+
+            dt_artifact.add_file("dt.joblib")
+            wandb.log_artifact(dt_artifact)
+            wandb.finish()
+
+        if trained_rf_model != None:
+
+            # store rf model
+            logging.info("REFITTING_MODELS: %s", "processing rf model.")
+            rf = RandomForestClassifier(**trained_rf_model)
+            refit_rf = rf.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+
+            wandb.init(project=wandb_project, group="rf", job_type="final")
+            joblib.dump(refit_rf, "rf.joblib")
+            rf_artifact = wandb.Artifact(
+                "RF-Model",
+                type="model",
+                description="selected RF model",
+                metadata={
+                    "parameters": trained_rf_model,
+                    "epoch": rf_epoch_id,
+                },
+            )
+
+            rf_artifact.add_file("rf.joblib")
+            wandb.log_artifact(rf_artifact)
+            wandb.finish()
+
+        if trained_xgb_model != None:
+
+            # store xgb model
+            logging.info("REFITTING_MODELS: %s", "processing xgb model.")
+            xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
+            xgboost = xgboost.set_params(**trained_xgb_model)
+            refit_xgb = xgboost.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+
+            wandb.init(project=wandb_project, group="xgb", job_type="final")
+            joblib.dump(refit_xgb, "xgb.joblib")
+            xgb_artifact = wandb.Artifact(
+                "XGB-Model",
+                type="model",
+                description="selected XGB model",
+                metadata={
+                    "parameters": trained_xgb_model,
+                    "epoch": xgb_epoch_id,
+                },
+            )
+
+            xgb_artifact.add_file("xgb.joblib")
+            wandb.log_artifact(xgb_artifact)
+            wandb.finish()
+
+        if trained_lgb_model != None:
+
+            # store lgb model
+            logging.info("REFITTING_MODELS: %s", "processing lgb model.")
+            lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
+            lgb_model = lgb_model.set_params(**trained_lgb_model)
+            refit_lgb = lgb_model.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+
+            wandb.init(project=wandb_project, group="lgb", job_type="final")
+            joblib.dump(refit_lgb, "lgb.joblib")
+            lgb_artifact = wandb.Artifact(
+                "LGB-Model",
+                type="model",
+                description="selected LGB model",
+                metadata={
+                    "parameters": trained_lgb_model,
+                    "epoch": lgb_epoch_id,
+                },
+            )
+
+            lgb_artifact.add_file("lgb.joblib")
+            wandb.log_artifact(lgb_artifact)
+            wandb.finish()
+
+        logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
+        
+        wandb.init(project=wandb_project)
+        wandb.alert(title="Complete", text="Your run is complete. Check the board.")
+        wandb.finish()
+        
+    except Exception as error:
+        logging.error("NESTED_LOOP: %s", "ERROR: some error happened, could not finish.")
+        logging.error("NESTED_LOOP: %s", error)
+
+        wandb.init(project=wandb_project)
+        wandb.alert(title="Error", text="Your run was interrupted by some exception inside model fitting.")
         wandb.finish()
 
-    if trained_xgb_model != None:
-
-        # store xgb model
-        logging.info("REFITTING_MODELS: %s", "processing xgb model.")
-        xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
-        xgboost = xgboost.set_params(**trained_xgb_model)
-        refit_xgb = xgboost.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
-
-        wandb.init(project=wandb_project, group="xgb", job_type="final")
-        joblib.dump(refit_xgb, "xgb.joblib")
-        xgb_artifact = wandb.Artifact(
-            "XGB-Model",
-            type="model",
-            description="selected XGB model",
-            metadata={
-                "parameters": trained_xgb_model,
-                "epoch": xgb_epoch_id,
-            },
-        )
-
-        xgb_artifact.add_file("xgb.joblib")
-        wandb.log_artifact(xgb_artifact)
-        wandb.finish()
-
-    if trained_lgb_model != None:
-
-        # store lgb model
-        logging.info("REFITTING_MODELS: %s", "processing lgb model.")
-        lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
-        lgb_model = lgb_model.set_params(**trained_lgb_model)
-        refit_lgb = lgb_model.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
-
-        wandb.init(project=wandb_project, group="lgb", job_type="final")
-        joblib.dump(refit_lgb, "lgb.joblib")
-        lgb_artifact = wandb.Artifact(
-            "LGB-Model",
-            type="model",
-            description="selected LGB model",
-            metadata={
-                "parameters": trained_lgb_model,
-                "epoch": lgb_epoch_id,
-            },
-        )
-
-        lgb_artifact.add_file("lgb.joblib")
-        wandb.log_artifact(lgb_artifact)
-        wandb.finish()
-
-    logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
-    
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Complete", text="Your run is complete. Check the board.")
-    wandb.finish()
     return
 
 def oversample_data(X: pd.Series, y: pd.Series):
