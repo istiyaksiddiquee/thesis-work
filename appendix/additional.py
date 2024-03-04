@@ -674,9 +674,9 @@ def main_wf():
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    # wandb.init(project=wandb_project)
-    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    # wandb.finish()
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    wandb.finish()
 
     loop_outputs = additional_workflow()
     refitt = finishing_alert()
