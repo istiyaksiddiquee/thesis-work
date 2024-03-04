@@ -29,82 +29,94 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 
 random_state = 7
 data_imputation = 1
-feature_selection = 0
-wandb_project = "RQ2RUN7"
-optimization_metric = "balanced_accuracy"
+feature_selection = 1
+wandb_project = "RQ2RUN1"
+optimization_metric = "average_precision_score"
+default_metric = "val_average_precision"
 
-
-scorers_for_gridcv = {
-    "accuracy_score": make_scorer(accuracy_score),
-    "precision_score": make_scorer(precision_score, average=None),
-    "recall_score": make_scorer(recall_score, average=None),
-    "fbeta_score": make_scorer(fbeta_score, beta=0.5),
-    "balanced_accuracy_score": make_scorer(balanced_accuracy_score),
-    "average_precision_score": make_scorer(average_precision_score),
-    "roc_auc": make_scorer(roc_auc_score),
-}
-
-class CustomScore:
-    def __init__(self, accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc) -> None:
-        self.accuracy = accuracy
-        self.precision = precision
-        self.recall = recall
-        self.balanced_accuracy = balanced_accuracy
-        self.fbeta = fbeta
-        self.avg_precision = avg_precision
-        self.roc_auc = roc_auc
-
-    def get_default_metric(self) -> float:
-        return self.avg_precision
 
 class CLFOutput:
     def __init__(self, gridsearch_dict: dict, score: float) -> None:
         self.gridsearch_dict = gridsearch_dict
         self.score = score 
 
-def get_all_scores(y_real, y_pred, y_scores) -> CustomScore:
+def precision_0(y, y_pred):
+    returned_arr = precision_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[0]
+
+def precision_1(y, y_pred):
+    returned_arr = precision_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[1]
+
+def recall_0(y, y_pred):
+    returned_arr = recall_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[0]
+
+def recall_1(y, y_pred):
+    returned_arr = recall_score(y_true=y, y_pred=y_pred, average=None)
+    return returned_arr[1]
+
+scorers_for_gridcv = {
+    "accuracy_score": make_scorer(accuracy_score),
+    "precision_0": make_scorer(precision_0, greater_is_better=True),
+    "precision_1": make_scorer(precision_1, greater_is_better=True),
+    "recall_0": make_scorer(recall_0, greater_is_better=True),
+    "recall_1": make_scorer(recall_1, greater_is_better=True),
+    "fbeta_score": make_scorer(fbeta_score, beta=0.5),
+    "balanced_accuracy_score": make_scorer(balanced_accuracy_score),
+    "average_precision_score": make_scorer(average_precision_score),
+    "roc_auc": make_scorer(roc_auc_score)
+}
+
+
+def get_all_scores(y_real, y_pred, y_scores) -> dict:
+    
     accuracy = accuracy_score(y_real, y_pred)
-    precision = precision_score(y_real, y_pred, average=None)
-    recall = recall_score(y_real, y_pred, average=None)
+    precision0 = precision_0(y_real, y_pred)
+    precision1 = precision_1(y_real, y_pred)
+    recall0 = recall_0(y_real, y_pred)
+    recall1 = recall_1(y_real, y_pred)
     balanced_accuracy = balanced_accuracy_score(y_real, y_pred)
     fbeta = fbeta_score(y_real, y_pred, beta=0.5)
     avg_precision = average_precision_score(y_real, y_scores)
     roc_auc = roc_auc_score(y_real, y_scores)
 
-    return CustomScore(accuracy, precision, recall, balanced_accuracy, fbeta, avg_precision, roc_auc)
+    return {
+        "val_accuracy": accuracy, 
+        "val_precision_0": precision0, 
+        "val_precision_1": precision1, 
+        "val_recall_0": recall0, 
+        "val_recall_1": recall1, 
+        "val_fbeta": fbeta, 
+        "val_balanced_accuracy": balanced_accuracy,
+        "val_average_precision": avg_precision,
+        "val_roc_auc": roc_auc
+    }
+    
 
-
-def convert_scores_to_dict(custom_scores: CustomScore):
-    metrics = {}
-
-    metrics["accuracy"] = round(custom_scores.accuracy, 2)
-    metrics["precision_0"] = round(custom_scores.precision[0], 2)
-    metrics["precision_1"] = round(custom_scores.precision[1], 2)
-    metrics["recall_0"] = round(custom_scores.recall[0], 2)
-    metrics["recall_1"] = round(custom_scores.recall[1], 2)
-    metrics["balanced_accuracy"] = round(custom_scores.balanced_accuracy, 2)
-    metrics["fbeta"] = round(custom_scores.fbeta, 2)
-    metrics["avg_precision"] = round(custom_scores.avg_precision, 2)
-    metrics["roc_auc"] = round(custom_scores.roc_auc, 2)
-
-    return metrics
-
-
-def imbalanced_performance_summary(scores: CustomScore, model_name: str):
-    metrics = convert_scores_to_dict(scores)
-    table = make_table(metrics, model_name)
-    metrics_chart = wandb.visualize("wandb/metrics/v1", table)
-    return metrics_chart
-
-
-def make_table(metrics, model_name):
-    columns = ["metric_name", "metric_value", "model_name"]
-    table_content = [[name, value, model_name] for name, value in metrics.items()]
-
-    table = wandb.Table(columns=columns, data=table_content)
-
-    return table
-
+def process_gridcv_results(cv_result_df):
+    
+    mean_test_accuracy_score = round(cv_result_df['mean_test_accuracy_score'].iloc[0], 2)
+    mean_test_precision_0 = round(cv_result_df['mean_test_precision_0'].iloc[0], 2)
+    mean_test_precision_1 = round(cv_result_df['mean_test_precision_1'].iloc[0], 2)
+    mean_test_recall_0 = round(cv_result_df['mean_test_recall_0'].iloc[0], 2)
+    mean_test_recall_1 = round(cv_result_df['mean_test_recall_1'].iloc[0], 2)
+    mean_test_fbeta_score = round(cv_result_df['mean_test_fbeta_score'].iloc[0], 2)
+    mean_test_balanced_accuracy_score = round(cv_result_df['mean_test_balanced_accuracy_score'].iloc[0], 2)
+    mean_test_average_precision_score = round(cv_result_df['mean_test_average_precision_score'].iloc[0], 2)
+    mean_test_roc_auc = round(cv_result_df['mean_test_roc_auc'].iloc[0], 2)
+        
+    return {
+        "grid_accuracy": mean_test_accuracy_score, 
+        "grid_precision_0": mean_test_precision_0, 
+        "grid_precision_1": mean_test_precision_1, 
+        "grid_recall_0": mean_test_recall_0, 
+        "grid_recall_1": mean_test_recall_1, 
+        "grid_fbeta": mean_test_fbeta_score, 
+        "grid_balanced_accuracy": mean_test_balanced_accuracy_score,
+        "grid_average_precision": mean_test_average_precision_score, 
+        "grid_roc_auc": mean_test_roc_auc
+    }
 
 def read_pickled_input_files(file_path: str):
     if file_path == None:
@@ -206,17 +218,16 @@ def nested_loop() -> list[CLFOutput]:
             inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
-
-            rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
-            )
+            
             logit_output = fit_logistic_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             dt_output = fit_dt_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
-            
+            rf_output = fit_rf_model(
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+            )            
             xgb_output = fit_xgb_model(
                 x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
@@ -248,9 +259,9 @@ def main_wf():
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    # wandb.init(project=wandb_project)
-    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    # wandb.finish()
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    wandb.finish()
 
     loop_outputs = nested_loop()
     refitt = refitting_models(loop_outputs=loop_outputs)
@@ -260,7 +271,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -532,7 +543,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -569,7 +580,7 @@ def fit_logistic_model(
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=logit_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -589,15 +600,18 @@ def fit_logistic_model(
         logit_Y_pred = logit_model.predict(X_val.values)
         logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
         logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
-        wandb.log(convert_scores_to_dict(logit_custom_score))
+        wandb.log(logit_custom_score)
+        
+        logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
+        logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(logit_cv_result_df))
+        
         wandb.log(
             {
                 "best_parameters": logit_result.best_params_,
                 "best_score": logit_result.best_score_
             }
         )
-
-        logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
         
         logit_cv_result_artifact = wandb.Artifact(
             "logit_cv_result_artifact_" + epoch_str, 
@@ -610,7 +624,7 @@ def fit_logistic_model(
         wandb.log_artifact(logit_cv_result_artifact)
 
         wandb.finish()
-        logit_score = logit_custom_score.get_default_metric()
+        logit_score = logit_custom_score[default_metric]
 
     logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
     clf_output = CLFOutput(logit_best_grid_param, logit_score)
@@ -618,7 +632,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -649,7 +663,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=dt_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -668,7 +682,12 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_Y_pred = dt_model.predict(X_val.values)
         dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
         dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
-        wandb.log(convert_scores_to_dict(dt_custom_score))
+        wandb.log(dt_custom_score)
+        
+        dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
+        dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(dt_cv_result_df))
+        
         wandb.log(
             {
                 "best_parameters": dt_result.best_params_,
@@ -688,7 +707,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         wandb.log_artifact(dt_cv_result_artifact)
 
         wandb.finish()
-        dt_score = dt_custom_score.get_default_metric()
+        dt_score = dt_custom_score[default_metric]
 
     logging.info("FIT_DT_MODEL: %s", "dt run completed.")
     
@@ -696,7 +715,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -725,7 +744,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=rf_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -744,7 +763,12 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_Y_pred = rf_model.predict(X_val.values)
         rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
         rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
-        wandb.log(convert_scores_to_dict(rf_custom_score))
+        wandb.log(rf_custom_score)
+        
+        rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
+        rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(rf_cv_result_df))
+        
         wandb.log(
             {
                 "best_parameters": rf_result.best_params_,
@@ -766,7 +790,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
         wandb.finish()
 
-        rf_score = rf_custom_score.get_default_metric()
+        rf_score = rf_custom_score[default_metric]
 
     logging.info("FIT_RF_MODEL: %s", "rf run completed.")
 
@@ -775,7 +799,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -807,7 +831,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=xgb_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -829,15 +853,19 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             xgb_Y_pred = xgb_model.predict(X_val.values)
             xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
             xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
-            wandb.log(convert_scores_to_dict(xgb_custom_score))
+            wandb.log(xgb_custom_score)
+            
+            xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
+            xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+            wandb.log(process_gridcv_results(xgb_cv_result_df))
+        
             wandb.log(
                 {
                     "best_parameters": xgb_result.best_params_,
                     "best_score": xgb_result.best_score_
                 }
             )
-            xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
-            # xgb_cv_result_table = wandb.Table(dataframe=xgb_cv_result_df)
+            
             xgb_cv_result_artifact = wandb.Artifact(
                 "xgb_cv_result_artifact_" + epoch_str, 
                 type="cv_result"
@@ -850,7 +878,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
             wandb.finish()
 
-            xgb_score = xgb_custom_score.get_default_metric()
+            xgb_score = xgb_custom_score[default_metric]
         except Exception as e:
             logging.error("FIT_XGB_MODEL: %s", "Exception happened inside xgb result processor.")
             logging.error("FIT_XGB_MODEL: %s", e)
@@ -861,7 +889,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:RQ2RUN7")
+@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -897,7 +925,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             cv=inner_cv,
             refit=optimization_metric,
             param_grid=lgb_grid,
-            scoring=optimization_metric,
+            scoring=scorers_for_gridcv,
             verbose=0,
             n_jobs=-1,
         )
@@ -917,7 +945,12 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_Y_pred = lgb_model.predict(X_val.values)
         lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
         lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
-        wandb.log(convert_scores_to_dict(lgb_custom_score))
+        wandb.log(lgb_custom_score)
+        
+        lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
+        lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+        wandb.log(process_gridcv_results(lgb_cv_result_df))
+        
         wandb.log(
             {
                 "best_parameters": lgb_result.best_params_,
@@ -925,7 +958,6 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             }
         )
 
-        lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
         lgb_cv_result_artifact = wandb.Artifact(
             "lgb_cv_result_artifact_" + epoch_str, 
             type="cv_result"
@@ -937,7 +969,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         wandb.log_artifact(lgb_cv_result_artifact)
 
         wandb.finish()
-        lgb_score = lgb_custom_score.get_default_metric()
+        lgb_score = lgb_custom_score[default_metric]
 
     logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
     clf_output = CLFOutput(lgb_best_grid_param, lgb_score)

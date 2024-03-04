@@ -102,26 +102,37 @@ def read_pickled_input_files(file_path: str):
     return X_train_val, X_test, y_train_val, y_test
 
 
-def process_gridcv_results(cv_results, group, total_cv=5):
+def process_gridcv_results(cv_results, group):
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
-    
-    for i in range(0, total_cv):
-        acc_score = round(cv_results['mean_test_accuracy_score'][i], 2)
-        prec_0 = round(cv_results['mean_test_precision_0'][i], 2)
-        prec_1 = round(cv_results['mean_test_precision_1'][i], 2)
-        rec_0 = round(cv_results['mean_test_recall_0'][i], 2)
-        rec_1 = round(cv_results['mean_test_recall_1'][i], 2)
-        fbeta = round(cv_results['mean_test_fbeta_score'][i], 2)
-        ba_score = round(cv_results['mean_test_balanced_accuracy_score'][i], 2)
-        avg_prec = round(cv_results['mean_test_average_precision_score'][i], 2)
-        roc_auc = round(cv_results['mean_test_roc_auc'][i], 2)
+    cv_result_df = pd.DataFrame.from_dict(cv_results)
+    cv_result_df.sort_values(by="rank_test_average_precision_score", ascending=True, inplace=True)
+    mean_test_accuracy_score = round(cv_result_df['mean_test_accuracy_score'].iloc[0], 2)
+    mean_test_precision_0 = round(cv_result_df['mean_test_precision_0'].iloc[0], 2)
+    mean_test_precision_1 = round(cv_result_df['mean_test_precision_1'].iloc[0], 2)
+    mean_test_recall_0 = round(cv_result_df['mean_test_recall_0'].iloc[0], 2)
+    mean_test_recall_1 = round(cv_result_df['mean_test_recall_1'].iloc[0], 2)
+    mean_test_fbeta_score = round(cv_result_df['mean_test_fbeta_score'].iloc[0], 2)
+    mean_test_balanced_accuracy_score = round(cv_result_df['mean_test_balanced_accuracy_score'].iloc[0], 2)
+    mean_test_average_precision_score = round(cv_result_df['mean_test_average_precision_score'].iloc[0], 2)
+    mean_test_roc_auc = round(cv_result_df['mean_test_roc_auc'].iloc[0], 2)
         
-        wandb.init(project=wandb_project, group=group, job_type="epoch_"+ str(i+1))
-        wandb.log({"accuracy": acc_score, "precision_0": prec_0, "precision_1": prec_1, "recall_0": rec_0, "recall_1": rec_1, "fbeta": fbeta, "balanced_accuracy": ba_score, "average_precision": avg_prec, "roc_auc": roc_auc})
-        wandb.finish()
+    wandb.init(project=wandb_project, group=group)
+    wandb.log({
+        "accuracy": mean_test_accuracy_score, 
+        "precision_0": mean_test_precision_0, 
+        "precision_1": mean_test_precision_1, 
+        "recall_0": mean_test_recall_0, 
+        "recall_1": mean_test_recall_1, 
+        "fbeta": mean_test_fbeta_score, 
+        "balanced_accuracy": mean_test_balanced_accuracy_score,
+        "average_precision": mean_test_average_precision_score, 
+        "roc_auc": mean_test_roc_auc
+    })
+    
+    wandb.finish()
         
     return
 
