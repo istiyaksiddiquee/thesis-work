@@ -65,7 +65,7 @@
         state: present
     - name: Add Kubernetes software repository
       apt_repository:
-        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
         state: present
         filename: kubernetes.list
         update_cache: yes

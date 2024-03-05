@@ -25,7 +25,7 @@ import joblib
 import lightgbm as lgb
 import pickle
 import logging
-from flytekit import task, workflow
+# from flytekit import task, workflow
 import smote_variants as sv
 
 total_cv = 5
@@ -127,7 +127,7 @@ def process_gridcv_results(cv_result_df):
     }
 
     
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+# #@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Logistic Regression
 
@@ -187,10 +187,10 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
             }
         )
         
-        logit_model = logit_result.best_estimator_
-        joblib.dump(logit_model, "logit.joblib")
+        # logit_model = logit_result.best_estimator_
+        joblib.dump(logit_result, "logit.joblib")
         logit_artifact = wandb.Artifact(
-            "Logistic-Model",
+            "Logistic-GridSearchCV-Object",
             type="model",
             description="selected Logistic model"
         )
@@ -214,7 +214,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Decision Tree
 
@@ -270,10 +270,10 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             }
         )
         
-        dt_model = dt_result.best_estimator_
-        joblib.dump(dt_model, "dt.joblib")
+        # dt_model = dt_result.best_estimator_
+        joblib.dump(dt_result, "dt.joblib")
         dt_artifact = wandb.Artifact(
-            "Decision-Tree-Model",
+            "Decision-GridSearchCV-Object",
             type="model",
             description="selected DT model",
             metadata={
@@ -301,7 +301,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # Random Forest
 
@@ -354,10 +354,10 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             }
         )
         
-        rf_model = rf_result.best_estimator_
-        joblib.dump(rf_model, "rf.joblib")
+        # rf_model = rf_result.best_estimator_
+        joblib.dump(rf_result, "rf.joblib")
         rf_artifact = wandb.Artifact(
-            "Random-Forest-Model",
+            "Random-GridSearchCV-Object",
             type="model",
             description="selected RF model",
             metadata={
@@ -385,7 +385,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # XGB
 
@@ -441,10 +441,10 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             }
         )
         
-        xgb_model = xgb_result.best_estimator_
-        joblib.dump(xgb_model, "xgb.joblib")
+        # xgb_model = xgb_result.best_estimator_
+        joblib.dump(xgb_result, "xgb.joblib")
         xgb_artifact = wandb.Artifact(
-            "XGB-Model",
+            "XGB-GridSearchCV-Object",
             type="model",
             description="selected XGB model",
             metadata={
@@ -472,7 +472,7 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     # LGB
 
@@ -532,10 +532,10 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             }
         )
         
-        lgb_model = lgb_result.best_estimator_
-        joblib.dump(lgb_model, "lgb.joblib")
+        # lgb_model = lgb_result.best_estimator_
+        joblib.dump(lgb_result, "lgb.joblib")
         lgb_artifact = wandb.Artifact(
-            "LGB-Model",
+            "LGB-GridSearchCV-Object",
             type="model",
             description="selected LGB model",
             metadata={
@@ -563,7 +563,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def fit_dummy_classifier(x: pd.Series, y: pd.Series):
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -597,7 +597,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series):
     return
 
 
-@workflow()
+#@workflow()
 def additional_workflow():
     
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -653,7 +653,7 @@ def additional_workflow():
 
     return
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:" + wandb_project)
 def finishing_alert() -> None:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -667,20 +667,20 @@ def finishing_alert() -> None:
     return 
 
 
-@workflow
+# @workflow
 def main_wf():
     
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    # wandb.init(project=wandb_project)
-    # wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    # wandb.finish()
+    wandb.init(project=wandb_project)
+    wandb.alert(title="Started", text="Your run has started. Mark the time.")
+    wandb.finish()
 
     loop_outputs = additional_workflow()
     refitt = finishing_alert()
-    loop_outputs >> refitt
+    # loop_outputs >> refitt
 
     logging.info("MAIN_WF: %s", f"workflow finished.")
     return

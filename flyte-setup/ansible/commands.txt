@@ -8,8 +8,8 @@ ssh-copy-id siddiquee@192.168.0.103
 sudo apt-get update
 sudo apt-get install python
 
-ansible -i geekom all -m ping
-ansible-playbook -i geekom install.yaml --ask-become-pass
+ansible -i inventory all -m ping
+ansible-playbook -i inventory install.yaml --ask-become-pass
 
 wget https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz
 
@@ -19,3 +19,4 @@ helm install -n flyte -f starter.yaml --create-namespace flyte flyteorg/flyte-sa
 
 
 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
+jUhb&g5F$hj
