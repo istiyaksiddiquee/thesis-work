@@ -19,7 +19,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from flytekit import task, workflow
+# from flytekit import task, workflow
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
@@ -155,7 +155,7 @@ def read_pickled_input_files(file_path: str):
     
     return X_train_val, X_test, y_train_val, y_test
 
-@workflow
+#@workflow
 def nested_loop() -> list[CLFOutput]:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -252,7 +252,7 @@ def nested_loop() -> list[CLFOutput]:
         wandb.finish()
     return loop_outputs
 
-@workflow
+#@workflow
 def main_wf():
     
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -271,7 +271,7 @@ def main_wf():
     return
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -283,7 +283,7 @@ def refitting_models(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     try:
-        csv_path = "/root/workflows"
+        csv_path = "."
         X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
 
         loop_counter = 0
@@ -553,7 +553,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     return dummy_clf
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -633,6 +633,16 @@ def fit_logistic_model(
         logit_cv_result_artifact.add_file(logit_cv_file_name)
         wandb.log_artifact(logit_cv_result_artifact)
 
+        joblib.dump(logit_result, f"logit_gcv_{epoch_str}.joblib")
+        logit_artifact = wandb.Artifact(
+            "Logit-GridSearchCV-Object",
+            type="gcv_object",
+            description=f"Logit GridSearchCV object for {epoch_str}"
+        )
+
+        logit_artifact.add_file(f"logit_gcv_{epoch_str}.joblib")
+        wandb.log_artifact(logit_artifact)
+
         wandb.finish()
         logit_score = logit_custom_score[default_metric]
 
@@ -642,7 +652,7 @@ def fit_logistic_model(
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -716,6 +726,16 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_cv_result_artifact.add_file(dt_cv_file_name)
         wandb.log_artifact(dt_cv_result_artifact)
 
+        joblib.dump(dt_result, f"dt_gcv_{epoch_str}.joblib")
+        dt_artifact = wandb.Artifact(
+            "DT-GridSearchCV-Object",
+            type="gcv_object",
+            description=f"DT GridSearchCV object for {epoch_str}"
+        )
+
+        dt_artifact.add_file(f"dt_gcv_{epoch_str}.joblib")
+        wandb.log_artifact(dt_artifact)
+
         wandb.finish()
         dt_score = dt_custom_score[default_metric]
 
@@ -725,7 +745,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -798,6 +818,16 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_cv_result_artifact.add_file(rf_cv_file_name)
         wandb.log_artifact(rf_cv_result_artifact)
 
+        joblib.dump(rf_result, f"rf_gcv_{epoch_str}.joblib")
+        rf_artifact = wandb.Artifact(
+            "RF-GridSearchCV-Object",
+            type="gcv_object",
+            description=f"RF GridSearchCV object for {epoch_str}"
+        )
+
+        rf_artifact.add_file(f"rf_gcv_{epoch_str}.joblib")
+        wandb.log_artifact(rf_artifact)
+
         wandb.finish()
 
         rf_score = rf_custom_score[default_metric]
@@ -809,7 +839,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -886,6 +916,16 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             xgb_cv_result_artifact.add_file(xgb_cv_file_name)
             wandb.log_artifact(xgb_cv_result_artifact)
 
+            joblib.dump(xgb_result, f"xgb_gcv_{epoch_str}.joblib")
+            xgb_artifact = wandb.Artifact(
+                "XGB-GridSearchCV-Object",
+                type="gcv_object",
+                description=f"XGB GridSearchCV object for {epoch_str}"
+            )
+
+            xgb_artifact.add_file(f"xgb_gcv_{epoch_str}.joblib")
+            wandb.log_artifact(xgb_artifact)
+
             wandb.finish()
 
             xgb_score = xgb_custom_score[default_metric]
@@ -899,7 +939,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
+#@task(container_image="istiyaksiddiquee/flyte-for-thesis:"+wandb_project)
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -977,6 +1017,16 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_cv_result_df.to_csv(lgb_cv_file_name)
         lgb_cv_result_artifact.add_file(lgb_cv_file_name)
         wandb.log_artifact(lgb_cv_result_artifact)
+
+        joblib.dump(lgb_result, f"lgb_gcv_{epoch_str}.joblib")
+        lgb_artifact = wandb.Artifact(
+            "LGB-GridSearchCV-Object",
+            type="gcv_object",
+            description=f"LGB GridSearchCV object for {epoch_str}"
+        )
+
+        lgb_artifact.add_file(f"lgb_gcv_{epoch_str}.joblib")
+        wandb.log_artifact(lgb_artifact)
 
         wandb.finish()
         lgb_score = lgb_custom_score[default_metric]
