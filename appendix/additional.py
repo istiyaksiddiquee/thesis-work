@@ -187,7 +187,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
             }
         )
         
-        logit_model = logit_result.best_estimator_
+        logit_model = logit_result.best_estimator_J
         joblib.dump(logit_model, "logit.joblib")
         logit_artifact = wandb.Artifact(
             "Logistic-Model",

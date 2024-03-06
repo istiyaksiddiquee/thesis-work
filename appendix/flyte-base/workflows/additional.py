@@ -31,7 +31,7 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "RQ2RUN6"
+wandb_project = "RQ2RUN6v2"
 optimization_metric = "average_precision_score"
 # data_folder = "segment"
 # data_folder = "shuttle"
