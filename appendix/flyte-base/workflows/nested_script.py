@@ -30,10 +30,10 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 random_state = 7
 wandb_project = "AppendixRUN11"
 optimization_metric = "average_precision"
-# data_folder = "segment"
+data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
-data_folder = "three_yeast"
+# data_folder = "three_yeast"
 default_metric = "val_average_precision"
 
 
@@ -155,7 +155,7 @@ def nested_loop() -> list[CLFOutput]:
     try:
 
         logging.info("NESTED_LOOP: %s", "initiating processing, reading files")
-        csv_path = "."
+        csv_path = os.path.join(".", data_folder)
         
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
 
@@ -263,7 +263,7 @@ def refitting_models(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     try:
-        csv_path = "."
+        csv_path = os.path.join(".", data_folder)
         X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
 
         loop_counter = 0
