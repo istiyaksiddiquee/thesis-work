@@ -210,6 +210,7 @@ def nested_loop() -> list[CLFOutput]:
 
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
+            
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
             
             if data_imputation != 1:
