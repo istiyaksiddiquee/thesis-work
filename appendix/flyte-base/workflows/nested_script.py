@@ -155,7 +155,7 @@ def nested_loop() -> list[CLFOutput]:
     try:
 
         logging.info("NESTED_LOOP: %s", "initiating processing, reading files")
-        csv_path = os.path.join(".", data_folder)
+        csv_path = os.path.join("/home/siddiquee/thesis-work/appendix/flyte-base/workflows", data_folder)
         
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
 
@@ -263,7 +263,7 @@ def refitting_models(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     try:
-        csv_path = os.path.join(".", data_folder)
+        csv_path = os.path.join("/home/siddiquee/thesis-work/appendix/flyte-base/workflows", data_folder)
         X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
 
         loop_counter = 0
