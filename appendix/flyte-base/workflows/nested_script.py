@@ -245,7 +245,7 @@ def main_wf():
 
     loop_outputs = nested_loop()
     refitt = refitting_models(loop_outputs=loop_outputs)
-    loop_outputs >> refitt
+    # loop_outputs >> refitt
 
     logging.info("MAIN_WF: %s", f"workflow finished.")
     return
