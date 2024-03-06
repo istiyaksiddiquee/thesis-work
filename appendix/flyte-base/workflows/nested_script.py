@@ -28,10 +28,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 
 random_state = 7
-wandb_project = "AppendixRUN11"
-optimization_metric = "average_precision"
-data_folder = "segment"
-# data_folder = "shuttle"
+wandb_project = "AppendixRUN12"
+optimization_metric = "average_precision_score"
+# data_folder = "segment"
+data_folder = "shuttle"
 # data_folder = "one_yeast"
 # data_folder = "three_yeast"
 default_metric = "val_average_precision"
