@@ -211,6 +211,17 @@ def nested_loop() -> list[CLFOutput]:
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
             
+            normalized_x_val = copy(X_val)
+            cd_first_quantile = np.quantile(normalized_x_val["characteristic_distance"], 0.25)
+            cd_third_quantile = np.quantile(normalized_x_val["characteristic_distance"], 0.75)
+            normalized_x_val["depth"] = np.log(normalized_x_val["depth"])
+            normalized_x_val["max_breadth"] = np.log(normalized_x_val["max_breadth"])
+            normalized_x_val["characteristic_distance"] = np.log(normalized_x_val["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+            normalized_x_val["size"] = np.log(normalized_x_val["size"])
+            normalized_x_val["strongly_cc"] = np.log(normalized_x_val["strongly_cc"])
+
+            scaled_x_val = scaler.transform(normalized_x_val)
+            
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
             
             if data_imputation != 1:
@@ -221,19 +232,19 @@ def nested_loop() -> list[CLFOutput]:
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
             
             logit_output = fit_logistic_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_x_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             dt_output = fit_dt_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_x_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_x_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             xgb_output = fit_xgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_x_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             lgb_output = fit_lgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_x_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
 
             loop_outputs.append(logit_output)
@@ -608,6 +619,8 @@ def fit_logistic_model(
         logit_model = logit_result.best_estimator_
         logit_best_grid_param = logit_model.get_params()
 
+        # 
+        
         logit_Y_pred = logit_model.predict(X_val.values)
         logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
         logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
