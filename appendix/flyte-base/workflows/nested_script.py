@@ -158,6 +158,10 @@ def nested_loop() -> list[CLFOutput]:
         csv_path = os.path.join("/home/siddiquee/thesis-work/appendix/flyte-base/workflows", data_folder)
         
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
+        y_train_val.replace(to_replace='positive', value=1, inplace=True)
+        y_train_val.replace(to_replace='negative', value=0, inplace=True)
+        y_test.replace(to_replace='positive', value=1, inplace=True)
+        y_test.replace(to_replace='negative', value=0, inplace=True)
 
         # call the nested loop to get all the trained models
         logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
