@@ -31,13 +31,13 @@ import smote_variants as sv
 total_cv = 5
 random_state = 7
 no_of_active_features = 15
-wandb_project = "RQ2RUN6v2"
+wandb_project = "AppendixRUN2v1"
 optimization_metric = "average_precision_score"
-# data_folder = "segment"
+data_folder = "segment"
 # data_folder = "shuttle"
 # data_folder = "one_yeast"
 # data_folder = "three_yeast"
-data_folder = "thesis"
+# data_folder = "thesis"
 
 def precision_0(y, y_pred):
     returned_arr = precision_score(y_true=y, y_pred=y_pred, average=None)
@@ -70,7 +70,11 @@ scorers_for_gridcv = {
 
 def oversample_data(X: pd.Series, y: pd.Series):
 
+
     oversampler = sv.polynom_fit_SMOTE_poly()
+    # oversampler = sv.ProWSyn()
+    # oversampler = sv.SMOTE_IPF()
+    
     X_samp, y_samp = oversampler.sample(X, y)
     X_samp, y_samp = pd.DataFrame(X_samp), pd.Series(y_samp)
 
@@ -87,16 +91,16 @@ def read_pickled_input_files(file_path: str):
     X_test = None
     y_test = None
 
-    with open(os.path.join(file_path, "x_train_val_full.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "x_train_val.pickle"), "rb") as file:
         X_train_val = pickle.load(file)
 
-    with open(os.path.join(file_path, "y_train_val_full.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "y_train_val.pickle"), "rb") as file:
         y_train_val = pickle.load(file)
 
-    with open(os.path.join(file_path, "x_test_full.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "x_test.pickle"), "rb") as file:
         X_test = pickle.load(file)
 
-    with open(os.path.join(file_path, "y_test_full.pickle"), "rb") as file:
+    with open(os.path.join(file_path, "y_test.pickle"), "rb") as file:
         y_test = pickle.load(file)
 
     return X_train_val, X_test, y_train_val, y_test
@@ -139,9 +143,6 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
     
     logit_result = None
 
-    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
-
     try:
         # logit_grid = {
         #     "penalty": ["l2"],
@@ -167,7 +168,7 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
             n_jobs=-1,
         )
 
-        logit_result = clf.fit(x_train_val_df, y_train_val_df)
+        logit_result = clf.fit(x_train_val_df.values, y_train_val_df.values)
 
     except Exception as error:
         logging.error("Could not fit Logistic model")
@@ -180,32 +181,31 @@ def fit_logistic_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> 
         logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
         logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
         wandb.log(process_gridcv_results(logit_cv_result_df))
-        wandb.log(
-            {
+        
+        
+        # logit_model = logit_result.best_estimator_
+        joblib.dump(logit_result.best_estimator_, os.path.join(wandb_project, "logit.joblib"))
+        logit_artifact = wandb.Artifact(
+            "Logistic-best-estimator",
+            type="model",
+            description="selected Logistic model"
+        )
+
+        logit_artifact.add_file(os.path.join(wandb_project, "logit.joblib"))
+        wandb.log_artifact(logit_artifact)
+        
+        logit_cv_result_artifact = wandb.Artifact(
+            "logit_cv_result_artifact", 
+            type="cv_result",
+            metadata={
                 "best_parameters": logit_result.best_params_,
                 "best_score": logit_result.best_score_
             }
         )
         
-        # logit_model = logit_result.best_estimator_
-        joblib.dump(logit_result, "logit.joblib")
-        logit_artifact = wandb.Artifact(
-            "Logistic-GridSearchCV-Object",
-            type="model",
-            description="selected Logistic model"
-        )
-
-        logit_artifact.add_file("logit.joblib")
-        wandb.log_artifact(logit_artifact)
-        
-        logit_cv_result_artifact = wandb.Artifact(
-            "logit_cv_result_artifact", 
-            type="cv_result"
-        )
-        
         logit_cv_file_name = f"./logit_cv_result.csv"
-        logit_cv_result_df.to_csv(logit_cv_file_name)
-        logit_cv_result_artifact.add_file(logit_cv_file_name)
+        logit_cv_result_df.to_csv(os.path.join(wandb_project, logit_cv_file_name))
+        logit_cv_result_artifact.add_file(os.path.join(wandb_project, logit_cv_file_name))
         wandb.log_artifact(logit_cv_result_artifact)
         
         wandb.finish()
@@ -250,7 +250,7 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             n_jobs=-1,
         )
 
-        dt_result = clf.fit(x_train_val_df, y_train_val_df)
+        dt_result = clf.fit(x_train_val_df.values, y_train_val_df.values)
 
     except Exception as error:
         logging.error("Could not fit Decision Tree model")
@@ -263,36 +263,30 @@ def fit_dt_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
         dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
         wandb.log(process_gridcv_results(dt_cv_result_df))
-        wandb.log(
-            {
-                "best_parameters": dt_result.best_params_,
-                "best_score": dt_result.best_score_
-            }
-        )
         
         # dt_model = dt_result.best_estimator_
-        joblib.dump(dt_result, "dt.joblib")
+        joblib.dump(dt_result.best_estimator_, os.path.join(wandb_project, "dt.joblib"))
         dt_artifact = wandb.Artifact(
-            "Decision-GridSearchCV-Object",
+            "Decision-best-estimator",
             type="model",
-            description="selected DT model",
+            description="selected DT model"
+        )
+
+        dt_artifact.add_file(os.path.join(wandb_project, "dt.joblib"))
+        wandb.log_artifact(dt_artifact)
+        
+        dt_cv_result_artifact = wandb.Artifact(
+            "dt_cv_result_artifact", 
+            type="cv_result",
             metadata={
                 "best_parameters": dt_result.best_params_,
                 "best_score": dt_result.best_score_
             },
         )
-
-        dt_artifact.add_file("dt.joblib")
-        wandb.log_artifact(dt_artifact)
-        
-        dt_cv_result_artifact = wandb.Artifact(
-            "dt_cv_result_artifact", 
-            type="cv_result"
-        )
         
         dt_cv_file_name = f"./dt_cv_result.csv"
-        dt_cv_result_df.to_csv(dt_cv_file_name)
-        dt_cv_result_artifact.add_file(dt_cv_file_name)
+        dt_cv_result_df.to_csv(os.path.join(wandb_project, dt_cv_file_name))
+        dt_cv_result_artifact.add_file(os.path.join(wandb_project, dt_cv_file_name))
         wandb.log_artifact(dt_cv_result_artifact)
         
         wandb.finish()
@@ -335,7 +329,7 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             n_jobs=-1,
         )
 
-        rf_result = clf.fit(x_train_val_df, y_train_val_df)
+        rf_result = clf.fit(x_train_val_df.values, y_train_val_df.values)
 
     except Exception as error:
         logging.error("Could not fit Random Forest model")
@@ -347,36 +341,29 @@ def fit_rf_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
         rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
         wandb.log(process_gridcv_results(rf_cv_result_df))
-        wandb.log(
-            {
-                "best_parameters": rf_result.best_params_,
-                "best_score": rf_result.best_score_
-            }
-        )
         
-        # rf_model = rf_result.best_estimator_
-        joblib.dump(rf_result, "rf.joblib")
+        joblib.dump(rf_result.best_estimator_, os.path.join(wandb_project, "rf.joblib"))
         rf_artifact = wandb.Artifact(
-            "Random-GridSearchCV-Object",
+            "Random-Forest-best-estimator",
             type="model",
-            description="selected RF model",
+            description="selected RF model"
+        )
+
+        rf_artifact.add_file(os.path.join(wandb_project, "rf.joblib"))
+        wandb.log_artifact(rf_artifact)
+        
+        rf_cv_result_artifact = wandb.Artifact(
+            "rf_cv_result_artifact", 
+            type="cv_result",
             metadata={
                 "best_parameters": rf_result.best_params_,
                 "best_score": rf_result.best_score_
             },
         )
-
-        rf_artifact.add_file("rf.joblib")
-        wandb.log_artifact(rf_artifact)
-        
-        rf_cv_result_artifact = wandb.Artifact(
-            "rf_cv_result_artifact", 
-            type="cv_result"
-        )
         
         rf_cv_file_name = f"./rf_cv_result.csv"
-        rf_cv_result_df.to_csv(rf_cv_file_name)
-        rf_cv_result_artifact.add_file(rf_cv_file_name)
+        rf_cv_result_df.to_csv(os.path.join(wandb_project, rf_cv_file_name))
+        rf_cv_result_artifact.add_file(os.path.join(wandb_project, rf_cv_file_name))
         wandb.log_artifact(rf_cv_result_artifact)
         
         wandb.finish()
@@ -396,8 +383,6 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     xgb_result = None
-    # y_train_val_df.replace(to_replace='positive', value=1, inplace=True)
-    # y_train_val_df.replace(to_replace='negative', value=0, inplace=True)
 
     try:
         # XGB
@@ -422,51 +407,44 @@ def fit_xgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             n_jobs=-1,
         )
 
-        xgb_result = clf.fit(x_train_val_df, y_train_val_df)
+        xgb_result = clf.fit(x_train_val_df.values, y_train_val_df.values)
 
     except Exception as error:
         logging.error("Could not fit XGB model")
         logging.error("An exception occurred:", error)
 
     if xgb_result != None:
-        wandb.init(project=wandb_project, group="xgb", job_type="final")
+        # wandb.init(project=wandb_project, group="xgb", job_type="final")
 
         xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
         xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-        wandb.log(process_gridcv_results(xgb_cv_result_df))
-        wandb.log(
-            {
-                "best_parameters": xgb_result.best_params_,
-                "best_score": xgb_result.best_score_
-            }
-        )
+        # wandb.log(process_gridcv_results(xgb_cv_result_df))
         
-        # xgb_model = xgb_result.best_estimator_
-        joblib.dump(xgb_result, "xgb.joblib")
-        xgb_artifact = wandb.Artifact(
-            "XGB-GridSearchCV-Object",
-            type="model",
-            description="selected XGB model",
-            metadata={
-                "best_parameters": xgb_result.best_params_,
-                "best_score": xgb_result.best_score_
-            },
-        )
+        joblib.dump(xgb_result.best_estimator_, os.path.join(wandb_project, "xgb.joblib"))
+        # xgb_artifact = wandb.Artifact(
+        #     "XGB-best-estimator",
+        #     type="model",
+        #     description="selected XGB model"
+        # )
 
-        xgb_artifact.add_file("xgb.joblib")
-        wandb.log_artifact(xgb_artifact)
+        # xgb_artifact.add_file(os.path.join(wandb_project, "xgb.joblib"))
+        # wandb.log_artifact(xgb_artifact)
         
-        xgb_cv_result_artifact = wandb.Artifact(
-            "xgb_cv_result_artifact", 
-            type="cv_result"
-        )
+        # xgb_cv_result_artifact = wandb.Artifact(
+        #     "xgb_cv_result_artifact", 
+        #     type="cv_result",
+        #     metadata={
+        #         "best_parameters": xgb_result.best_params_,
+        #         "best_score": xgb_result.best_score_
+        #     }
+        # )
         
         xgb_cv_file_name = f"./xgb_cv_result.csv"
-        xgb_cv_result_df.to_csv(xgb_cv_file_name)
-        xgb_cv_result_artifact.add_file(xgb_cv_file_name)
-        wandb.log_artifact(xgb_cv_result_artifact)
+        xgb_cv_result_df.to_csv(os.path.join(wandb_project, xgb_cv_file_name))
+        # xgb_cv_result_artifact.add_file(os.path.join(wandb_project, xgb_cv_file_name))
+        # wandb.log_artifact(xgb_cv_result_artifact)
         
-        wandb.finish()
+        # wandb.finish()
 
     logging.info("FIT_XGB_MODEL: %s", "xgb run completed.")
     return
@@ -513,7 +491,7 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
             n_jobs=-1,
         )
 
-        lgb_result = clf.fit(x_train_val_df, y_train_val_df)
+        lgb_result = clf.fit(x_train_val_df.values, y_train_val_df.values)
 
     except Exception as error:
         logging.error("Could not fit LGB model")
@@ -525,36 +503,29 @@ def fit_lgb_model(x_train_val_df: pd.Series, y_train_val_df: pd.Series) -> None:
         lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
         lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
         wandb.log(process_gridcv_results(lgb_cv_result_df))
-        wandb.log(
-            {
+        
+        joblib.dump(lgb_result.best_estimator_, os.path.join(wandb_project, "lgb.joblib"))
+        lgb_artifact = wandb.Artifact(
+            "LGB-best-estimator",
+            type="model",
+            description="selected LGB model"
+        )
+
+        lgb_artifact.add_file(os.path.join(wandb_project, "lgb.joblib"))
+        wandb.log_artifact(lgb_artifact)
+        
+        lgb_cv_result_artifact = wandb.Artifact(
+            "lgb_cv_result_artifact", 
+            type="cv_result",
+            metadata={
                 "best_parameters": lgb_result.best_params_,
                 "best_score": lgb_result.best_score_
             }
         )
         
-        # lgb_model = lgb_result.best_estimator_
-        joblib.dump(lgb_result, "lgb.joblib")
-        lgb_artifact = wandb.Artifact(
-            "LGB-GridSearchCV-Object",
-            type="model",
-            description="selected LGB model",
-            metadata={
-                "best_parameters": lgb_result.best_params_,
-                "best_score": lgb_result.best_score_
-            },
-        )
-
-        lgb_artifact.add_file("lgb.joblib")
-        wandb.log_artifact(lgb_artifact)
-        
-        lgb_cv_result_artifact = wandb.Artifact(
-            "lgb_cv_result_artifact", 
-            type="cv_result"
-        )
-        
         lgb_cv_file_name = f"./lgb_cv_result.csv"
-        lgb_cv_result_df.to_csv(lgb_cv_file_name)
-        lgb_cv_result_artifact.add_file(lgb_cv_file_name)
+        lgb_cv_result_df.to_csv(os.path.join(wandb_project, lgb_cv_file_name))
+        lgb_cv_result_artifact.add_file(os.path.join(wandb_project, lgb_cv_file_name))
         wandb.log_artifact(lgb_cv_result_artifact)
         
         wandb.finish()
@@ -580,15 +551,15 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series):
     most_freq_dummy_cls = dummy_frequent.fit(x, y)
 
     wandb.init(project=wandb_project, group="dummy", job_type="final")
-    joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
-    joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
+    joblib.dump(stratified_dummy_cls, os.path.join(wandb_project, "stratified_dummy_cls.joblib"))
+    joblib.dump(most_freq_dummy_cls, os.path.join(wandb_project, "most_freq_dummy_cls.joblib"))
 
     str_dum_artifact = wandb.Artifact("Stratified-Dummy-Cls", type="model", description="trained stratified dummy model")
 
     most_freq_dum_artifact = wandb.Artifact("Most-Freq-Dummy-Cls", type="model", description="trained most freq dummy model")
 
-    str_dum_artifact.add_file("stratified_dummy_cls.joblib")
-    most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
+    str_dum_artifact.add_file(os.path.join(wandb_project, "stratified_dummy_cls.joblib"))
+    most_freq_dum_artifact.add_file(os.path.join(wandb_project, "most_freq_dummy_cls.joblib"))
 
     wandb.log_artifact(str_dum_artifact)
     wandb.log_artifact(most_freq_dum_artifact)
@@ -612,6 +583,9 @@ def additional_workflow():
         # wandb.finish()
 
         logging.info("ADDITIONAL_WORKFLOW: %s", "initiating processing, reading files")
+        if not os.path.exists(wandb_project):
+            os.mkdir(wandb_project)
+            
         csv_path = os.path.join(".", data_folder)
         X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
         
@@ -620,25 +594,22 @@ def additional_workflow():
 
         logging.info("NESTED_LOOP: %s", "feature scaling")
         normalized_df = copy(X_train_val)
-        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        normalized_df["depth"] = np.log(normalized_df["depth"])
-        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-        normalized_df["size"] = np.log(normalized_df["size"])
-        normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
-
+        
         scaler = StandardScaler().set_output(transform="pandas")
-        scaled_X_train = scaler.fit_transform(normalized_df)
-        scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train_val.to_numpy())
+        scaled_X_train_val = scaler.fit_transform(normalized_df)
+        
+        y_train_val.replace(to_replace='positive', value=1, inplace=True)
+        y_train_val.replace(to_replace='negative', value=0, inplace=True)
+        
+        scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
 
         logging.info("ADDITIONAL_WORKFLOW: %s", "entering model fitting task")
-        fit_logistic_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_dt_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_xgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_rf_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_lgb_model(x_train_val_df=scaled_resampled_X_train, y_train_val_df=scaled_resampled_y_train)
-        fit_dummy_classifier(x=scaled_resampled_X_train, y=scaled_resampled_y_train)
+        # fit_logistic_model(x_train_val_df=scaled_resampled_X_train_val, y_train_val_df=scaled_resampled_y_train_val)
+        # fit_dt_model(x_train_val_df=scaled_resampled_X_train_val, y_train_val_df=scaled_resampled_y_train_val)
+        fit_xgb_model(x_train_val_df=scaled_resampled_X_train_val, y_train_val_df=scaled_resampled_y_train_val)
+        # fit_rf_model(x_train_val_df=scaled_resampled_X_train_val, y_train_val_df=scaled_resampled_y_train_val)
+        # fit_lgb_model(x_train_val_df=scaled_resampled_X_train_val, y_train_val_df=scaled_resampled_y_train_val)
+        # fit_dummy_classifier(x=scaled_resampled_X_train_val, y=scaled_resampled_y_train_val)
         
         logging.info("ADDITIONAL_WORKFLOW: %s", "model fitting complete.")
 
@@ -686,4 +657,4 @@ def main_wf():
     return
 
 if __name__ == "__main__":
-    main_wf()
+    additional_workflow()

@@ -1,0 +1,45 @@
+{
+    "os": "Windows-10-10.0.22631-SP0",
+    "python": "3.11.8",
+    "heartbeatAt": "2024-03-07T12:29:17.701199",
+    "startedAt": "2024-03-07T12:29:15.364569",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "E:\\Fake News Project\\thesis work\\appendix\\flyte-base\\workflows\\additional.py",
+    "codePathLocal": "additional.py",
+    "codePath": "appendix\\flyte-base\\workflows\\additional.py",
+    "git": {
+        "remote": "https://github.com/istiyaksiddiquee/thesis-work.git",
+        "commit": "bfbc3d7ac37bb17148f9f79e4f2f2255a84d748f"
+    },
+    "email": "istiyaksiddiquee@gmail.com",
+    "root": "E:/Fake News Project/thesis work",
+    "host": "bOKA-pc",
+    "username": "istiyak",
+    "executable": "E:\\test-env\\Scripts\\python.exe",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 1600.0,
+        "min": 0.0,
+        "max": 1800.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1600.0,
+            "min": 0.0,
+            "max": 1800.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 499.99999618530273,
+            "used": 354.14339447021484
+        }
+    },
+    "memory": {
+        "total": 31.851795196533203
+    }
+}

@@ -1,0 +1,1 @@
+{"grid_accuracy": 0.81, "grid_precision_0": 0.82, "grid_precision_1": 0.88, "grid_recall_0": 0.92, "grid_recall_1": 0.7, "grid_fbeta": 0.79, "grid_balanced_accuracy": 0.81, "grid_average_precision": 0.78, "grid_roc_auc": 0.81, "_timestamp": 1709765619.4613953, "_runtime": 1.766106367111206, "_step": 0, "_wandb": {"runtime": 2}}
