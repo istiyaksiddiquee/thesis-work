@@ -10,7 +10,7 @@ helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dash
 kubectl -n flyte port-forward service/minio 9000:9000
 kubectl -n flyte port-forward service/flyte-binary-grpc 8089:8089
 kubectl -n flyte port-forward service/flyte-binary-http 8088:8088
-kubectl -n flyte port-forward kubernetes-dashboard-64fc65498c-z27pq 9090:9090
+kubectl -n flyte port-forward kubernetes-dashboard-kong-7696bb8c88-j6qrl 9090:9090
 
 cd /var/lib/flyte
 
@@ -26,3 +26,7 @@ kubectl delete ns flyte
 
 sudo docker build -t istiyaksiddiquee/flyte-for-kube:test25 --build-arg="tag=istiyaksiddiquee/flyte-for-kube:test25" .
 sudo docker push istiyaksiddiquee/flyte-for-kube:test25
+
+mkdir -p /home/siddiquee/flyte/storage/minio
+sudo chown -R 1001:1001 /home/siddiquee/flyte/storage/minio
+cd /home/siddiquee/flyte/storage
