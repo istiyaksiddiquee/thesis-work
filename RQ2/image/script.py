@@ -30,7 +30,7 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 random_state = 7
 data_imputation = 1
 feature_selection = 0
-wandb_project = "test01"
+wandb_project = "test03"
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
 

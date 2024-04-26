@@ -19,7 +19,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-# from flytekit import task, workflow
+from flytekit import task, workflow
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
@@ -30,7 +30,7 @@ from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
 random_state = 7
 data_imputation = 1
 feature_selection = 0
-wandb_project = "test01"
+wandb_project = "test03"
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
 
@@ -155,7 +155,7 @@ def read_pickled_input_files(file_path: str):
     
     return X_train_val, X_test, y_train_val, y_test
 
-#@workflow
+@workflow
 def nested_loop() -> list[CLFOutput]:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -264,7 +264,7 @@ def nested_loop() -> list[CLFOutput]:
         wandb.finish()
     return loop_outputs
 
-#@workflow
+@workflow
 def main_wf():
     
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -283,7 +283,7 @@ def main_wf():
     return
 
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -565,7 +565,7 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     return dummy_clf
 
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -666,7 +666,7 @@ def fit_logistic_model(
     return clf_output
 
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -759,7 +759,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -853,7 +853,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -953,7 +953,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 
-#@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 

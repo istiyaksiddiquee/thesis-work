@@ -23,8 +23,8 @@ COPY . /root
 ARG tag
 ENV FLYTE_INTERNAL_IMAGE $tag
 
-# docker build -t istiyaksiddiquee/thesis-round-two:test01 --build-arg="tag=istiyaksiddiquee/thesis-round-two:test01" .
-# docker push istiyaksiddiquee/thesis-round-two:test01
-# sudo ctr image pull docker.io/istiyaksiddiquee/thesis-round-two:test01
+# docker build -t istiyaksiddiquee/thesis-round-two:test03 --build-arg="tag=istiyaksiddiquee/thesis-round-two:test03" .
+# docker push istiyaksiddiquee/thesis-round-two:test03
+# sudo ctr image pull docker.io/istiyaksiddiquee/thesis-round-two:test03
 # cd ../image
-# pyflyte run --remote --image istiyaksiddiquee/thesis-round-two:test01 script.py main_wf
+# pyflyte run --remote --image istiyaksiddiquee/thesis-round-two:test03 script.py main_wf
