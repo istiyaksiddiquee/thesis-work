@@ -29,9 +29,7 @@ from sklearn.dummy import DummyClassifier
 from copy import copy
 import numpy as np
 import pickle
-from flytekit import task, workflow, dynamic, ImageSpec, Resources
-from flytekit.remote import FlyteRemote
-from flytekit.configuration import Config, PlatformConfig
+from flytekit import task, workflow, dynamic, ImageSpec
 import wandb
 import joblib
 import lightgbm as lgb

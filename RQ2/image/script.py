@@ -19,21 +19,24 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from flytekit import task, workflow
+from sklearn.experimental import enable_halving_search_cv
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import RepeatedKFold, GridSearchCV, KFold
+from sklearn.model_selection import RepeatedKFold, KFold, HalvingGridSearchCV
 
+ds = 2
+trial = True
 random_state = 7
 data_imputation = 1
-feature_selection = 0
-wandb_project = "test03"
+feature_selection = 1
+wandb_project = "RQ2TestRun2"
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
 
+columns = ['depth', 'max_breadth', 'strongly_cc',  'size_of_scc', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
 
 class CLFOutput:
     def __init__(self, gridsearch_dict: dict, score: float) -> None:
@@ -68,7 +71,6 @@ scorers_for_gridcv = {
     "roc_auc": make_scorer(roc_auc_score)
 }
 
-
 def get_all_scores(y_real, y_pred, y_scores) -> dict:
     
     accuracy = accuracy_score(y_real, y_pred)
@@ -91,8 +93,7 @@ def get_all_scores(y_real, y_pred, y_scores) -> dict:
         "val_balanced_accuracy": balanced_accuracy,
         "val_average_precision": avg_precision,
         "val_roc_auc": roc_auc
-    }
-    
+    }    
 
 def process_gridcv_results(cv_result_df):
     
@@ -125,37 +126,30 @@ def read_pickled_input_files(file_path: str):
 
     X_train_val = None
     y_train_val = None
-    X_test = None
-    y_test = None
+
 
     X_train_val_file_name = "x_train_val.pickle"
     y_train_val_file_name = "y_train_val.pickle"
-    X_test_file_name = "x_test.pickle"
-    y_test_file_name = "y_test.pickle"
     
     if feature_selection != 1:
         X_train_val_file_name = "x_train_val_full.pickle"
         y_train_val_file_name = "y_train_val_full.pickle"
-        X_test_file_name = "x_test_full.pickle"
-        y_test_file_name = "y_test_full.pickle"
     
-
+    if ds == 2: 
+        X_train_val_file_name = "fibvid_x_train_val.pickle"
+        y_train_val_file_name = "fibvid_y_train_val.pickle"
+        
     with open(os.path.join(file_path, X_train_val_file_name), "rb") as file:
         X_train_val = pickle.load(file)
     
     with open(os.path.join(file_path, y_train_val_file_name) , "rb") as file:
         y_train_val = pickle.load(file)
     
-    with open(os.path.join(file_path, X_test_file_name),  "rb") as file:
-        X_test = pickle.load(file)
+    X_train_val = X_train_val[columns]
     
-    with open(os.path.join(file_path, y_test_file_name), "rb") as file:
-        y_test = pickle.load(file)
-    
-    
-    return X_train_val, X_test, y_train_val, y_test
+    return X_train_val, y_train_val
 
-@workflow
+# @workflow
 def nested_loop() -> list[CLFOutput]:
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -169,10 +163,10 @@ def nested_loop() -> list[CLFOutput]:
 
         logging.info("NESTED_LOOP: %s", "initiating processing, reading files")
         csv_path = "."
-        X_train_val, X_test, y_train_val, y_test = read_pickled_input_files(csv_path)
+        X_train_val, y_train_val = read_pickled_input_files(csv_path)
 
         # call the nested loop to get all the trained models
-        logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {X_test.shape}, {y_train_val.shape}, {y_test.shape}")
+        logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {y_train_val.shape}")
 
         logging.info("NESTED_LOOP: %s", "entering nested loop")
 
@@ -198,16 +192,19 @@ def nested_loop() -> list[CLFOutput]:
 
             logging.info("NESTED_LOOP: %s", "feature scaling")
             normalized_df = copy(X_train)
-            cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-            cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-            normalized_df["depth"] = np.log(normalized_df["depth"])
-            normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-            normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+            # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+            # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+            # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
             
-            if feature_selection != 1:
-                normalized_df["size"] = np.log(normalized_df["size"])
-                normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
-
+            if 'size' in columns:
+                normalized_df['size'] = np.log(normalized_df['max_breadth'])
+            
+            if 'size_of_scc' in columns:
+                normalized_df['size_of_scc'] = np.log(normalized_df['size_of_scc'])
+            
+            if 'layer_ratio' in columns:
+                normalized_df['layer_ratio'] = np.log(normalized_df['layer_ratio'])
+            
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
@@ -252,7 +249,7 @@ def nested_loop() -> list[CLFOutput]:
         wandb.finish()
     return loop_outputs
 
-@workflow
+# @workflow
 def main_wf():
     
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -264,14 +261,13 @@ def main_wf():
     wandb.finish()
 
     loop_outputs = nested_loop()
-    refitt = refitting_models(loop_outputs=loop_outputs)
-    loop_outputs >> refitt
+    refitting_models(loop_outputs=loop_outputs)
+    # loop_outputs >> refitt
 
     logging.info("MAIN_WF: %s", f"workflow finished.")
     return
 
-
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def refitting_models(
     loop_outputs: list[CLFOutput]
 ) -> None:
@@ -284,6 +280,10 @@ def refitting_models(
     
     try:
         csv_path = "/root/workflows"
+        
+        if trial == True:
+            csv_path = '.'
+            
         X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
 
         loop_counter = 0
@@ -360,15 +360,28 @@ def refitting_models(
 
         logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
         normalized_df = copy(X_train_val)
-        cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        normalized_df["depth"] = np.log(normalized_df["depth"])
-        normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
         
-        if feature_selection != 1:
-            normalized_df["size"] = np.log(normalized_df["size"])
-            normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+        # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+        # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+        # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+        # normalized_df["depth"] = np.log(normalized_df["depth"])
+        # normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
+        
+        if 'size' in columns:
+            normalized_df['size'] = np.log(normalized_df['max_breadth'])
+        
+        if 'size_of_scc' in columns:
+            normalized_df['size_of_scc'] = np.log(normalized_df['size_of_scc'])
+        
+        if 'layer_ratio' in columns:
+            normalized_df['layer_ratio'] = np.log(normalized_df['layer_ratio'])
+        
+        # if feature_selection != 1:
+        #     if 'size' in columns:
+        #         normalized_df["size"] = np.log(normalized_df["size"])
+            
+        #     if 'strongly_cc' in columns:
+        #         normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train_val = scaler.fit_transform(normalized_df)
@@ -382,9 +395,13 @@ def refitting_models(
         stratified_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "stratified")
         most_freq_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "most_frequent")
         
+        # train fit_default_rf_classifier with resampled scaled x y
+        default_rf = fit_default_rf_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
+        
         wandb.init(project=wandb_project, group="dummy", job_type="final")
         joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
         joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
+        joblib.dump(default_rf, "default_rf.joblib")
         
         str_dum_artifact = wandb.Artifact(
             "Stratified-Dummy-Cls",
@@ -398,11 +415,19 @@ def refitting_models(
             description="trained most freq dummy model"
         )
         
+        default_rf_artifact = wandb.Artifact(
+            "Default-RF-Cls",
+            type="model",
+            description="trained default rf model"
+        )
+        
         str_dum_artifact.add_file("stratified_dummy_cls.joblib")
         most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
+        default_rf_artifact.add_file("default_rf.joblib")
         
         wandb.log_artifact(str_dum_artifact)
         wandb.log_artifact(most_freq_dum_artifact)
+        wandb.log_artifact(default_rf_artifact)
         wandb.finish()
 
         if trained_logit_model != None:
@@ -521,6 +546,7 @@ def refitting_models(
             wandb.log_artifact(lgb_artifact)
             wandb.finish()
 
+        
         logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
         
         wandb.init(project=wandb_project)
@@ -545,15 +571,19 @@ def oversample_data(X: pd.Series, y: pd.Series):
 
     return X_samp, y_samp
 
-
 def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
     
     dummy_clf = DummyClassifier(strategy=strategy)
     dummy_clf.fit(x, y)
     return dummy_clf
 
+def fit_default_rf_classifier(x: pd.Series, y: pd.Series):
+    
+    rf_model = RandomForestClassifier()
+    rf_model.fit(x.values, y.values)
+    return rf_model
 
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
 ) -> CLFOutput:
@@ -571,21 +601,37 @@ def fit_logistic_model(
     logit_score = None
 
     try:
-        # logit_grid = {
-        #     "penalty": ["l2"],
-        # }
-        logit_grid = {
-            "penalty": ["l1", "l2", "elasticnet"],
-            "dual": [True, False],
-            "C": [_ for _ in range(1, 10, 1)],
-            "fit_intercept": [True, False],
-            "max_iter": [500],
-            "solver": ["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"],
-            "n_jobs": [-1],
-        }
+        
+        logit_grid = None
+        
+        if ds == 1:
+            logit_grid = {
+                "penalty": ["l1", "l2", "elasticnet"],
+                "dual": [True, False],
+                "C": [_ for _ in range(1, 11, 1)],
+                "fit_intercept": [True, False],
+                "max_iter": [500],
+                "solver": ["lbfgs", "newton-cg", "sag", "saga"],
+                "n_jobs": [-1],
+            }
+        else:
+            logit_grid = {
+                "penalty": ["l1", "l2", "elasticnet"],
+                "dual": [True, False],
+                "C": [_ for _ in range(1, 11, 1)],
+                "fit_intercept": [True, False],
+                "max_iter": [500],
+                "solver": ["lbfgs", "newton-cg", "sag", "saga"],
+                "n_jobs": [-1],
+            }
+        
+        if trial == True:
+            logit_grid = {"penalty": ["l2"]}
+        
         logit_model = LogisticRegression()
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
+            factor=3,
             estimator=logit_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -641,8 +687,7 @@ def fit_logistic_model(
 
     return clf_output
 
-
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
@@ -657,18 +702,31 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     dt_best_grid_param = None
     try:
 
-        # dt_grid = {"criterion": ["gini"]}
-        dt_grid = {
-            "criterion": ["gini", "entropy", "log_loss"],
-            "splitter": ["best", "random"],
-            "max_depth": [_ for _ in range(1, 5, 1)],
-            "min_samples_split": [_ for _ in range(1, 5, 1)],
-            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        }
+        dt_grid = None
+        if ds == 1:
+            dt_grid = {
+                "max_depth": [_ for _ in np.arange(1, 40 + 1, 1)],
+                "max_features": ['sqrt', 'log2'],
+                "min_samples_split": [_ for _ in np.arange(1, 40 + 1, 1)],
+                "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+            }
+        else:
+            dt_grid = {
+                "max_depth": [_ for _ in np.arange(1, 20 + 1, 1)],
+                "max_features": ['sqrt', 'log2'],
+                "min_samples_leaf": [_ for _ in np.arange(1, 15 + 1, 1)],
+                "min_samples_split": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+            }
+        
+        if trial == True:
+            dt_grid = {"criterion": ["gini"]}
         
         dt_clf = DecisionTreeClassifier(random_state=random_state)
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
+            factor=3,
             estimator=dt_clf,
             cv=inner_cv,
             refit=optimization_metric,
@@ -725,7 +783,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
@@ -740,16 +798,36 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     rf_best_grid_param = None
 
     try:
-        # rf_grid = {"criterion": ["gini"]}
-
-        rf_grid = {
-            "criterion": ["gini", "entropy", "log_loss"],
-            "max_depth": [_ for _ in range(1, 5, 1)],
-            "min_samples_leaf": [_ for _ in range(1, 10, 1)],
-        }
+        
+        rf_grid = None 
+        if ds == 1:
+            rf_grid = {
+                "max_depth": [_ for _ in np.arange(5, 50 + 5, 5)],
+                "n_estimators": [_ for _ in np.arange(50, 600 + 50, 50)],
+                "max_features": ['sqrt', 'log2'], 
+                "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
+                "min_samples_split": [_ for _ in np.arange(2, 30 + 5, 5)],
+                "criterion": ["gini", "entropy", "log_loss"],
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+            }
+        else:
+            rf_grid = {
+                "max_depth": [_ for _ in np.arange(1, 20 + 2, 2)],
+                "n_estimators": [_ for _ in np.arange(50, 300 + 50, 50)],
+                "max_features": ['sqrt', 'log2'], 
+                "min_samples_leaf": [_ for _ in np.arange(1, 20 + 5, 5)],
+                "min_samples_split": [_ for _ in np.arange(2, 20 + 5, 5)],
+                "criterion": ["gini", "entropy", "log_loss"],
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+            }
+        
+        if trial == True:
+            rf_grid = {"criterion": ["gini"]}
+            
         rf_model = RandomForestClassifier()
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
+            factor=3,
             estimator=rf_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -808,8 +886,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
 
     return clf_output
 
-
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
@@ -825,18 +902,40 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     try:
         # XGB
-        # xgb_grid = {
-        #     "learning_rate": [0.1],
-        # }
-        xgb_grid = {
-            # "n_estimators": range(60, 220, 40),
-            "learning_rate": [0.1, 0.01, 0.05],
-            "booster": ["gbtree", "gblinear", "dart"],
+        
+        xgb_grid = None
+        if ds == 1:
+            xgb_grid = {   
+                # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
+                "max_depth": [_ for _ in np.arange(1, 30 + 5, 5)],
+                "reg_alpha": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "reg_lambda": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
+                "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.1, 0.1)],
+                # "colsample_bytree": [_ for _ in np.arange(0.2, 0.9+0.1, 0.1)],
+                "min_child_weight": [_ for _ in np.arange(1, 7+1, 1)],
+        }
+        else:
+            xgb_grid = {   
+                # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                # "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
+                "max_depth": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "reg_alpha": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "reg_lambda": [_ for _ in np.arange(1, 10 + 1, 1)],
+                "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
+                "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.1, 0.1)],
+                # "colsample_bytree": [_ for _ in np.arange(0.2, 0.9+0.1, 0.1)],
+                "min_child_weight": [_ for _ in np.arange(1, 7+1, 1)],
         }
 
+        if trial == True:
+            xgb_grid = {"learning_rate": [0.1]}
+            
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
+            factor=3,
             estimator=xgb_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -898,8 +997,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
     return clf_output
 
-
-@task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
+# @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
@@ -916,21 +1014,36 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     
     try:
         # LGB
-        # lgb_grid = {"num_leaves": [31]}
-
-        lgb_grid = {
-            "learning_rate": [0.001, 0.005, 0.01],
-            "n_estimators": [8, 16, 24],
-            "num_leaves": [6, 8, 12],  # large num_leaves helps improve accuracy but might lead to over-fitting
-            "boosting_type": ["gbdt", "dart"],  # for better accuracy -> try dart
-            "subsample": [0.7, 0.75],
-            "reg_alpha": [1, 1.2],
-            "reg_lambda": [1, 1.2, 1.4],
-        }
+        
+        lgb_grid = None
+        if ds == 1:
+            lgb_grid = {
+                    "max_depth": [_ for _ in np.arange(1, 10+2, 2)],
+                    "lambda_l1": [_ for _ in np.arange(1, 10+1, 1)],
+                    "lambda_l2": [_ for _ in np.arange(1, 10+1, 1)],
+                    "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                    "min_data_in_leaf": [_ for _ in np.arange(50, 250+50, 50)],
+                    "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
+            }
+        else:
+            lgb_grid = {
+                    "max_depth": [_ for _ in np.arange(1, 10+2, 2)],
+                    "lambda_l1": [_ for _ in np.arange(1, 10+1, 1)],
+                    "lambda_l2": [_ for _ in np.arange(1, 10+1, 1)],
+                    "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                    "min_data_in_leaf": [_ for _ in np.arange(10, 50+15, 15)],
+                    "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
+            }
 
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
 
-        clf = GridSearchCV(
+        if trial == True:
+            lgb_grid = {"num_leaves": [31]}
+        
+        clf = HalvingGridSearchCV(
+            factor=3,
             estimator=lgb_model,
             cv=inner_cv,
             refit=optimization_metric,
