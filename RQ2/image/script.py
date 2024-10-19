@@ -19,13 +19,12 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.experimental import enable_halving_search_cv
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import RepeatedKFold, KFold, HalvingGridSearchCV
+from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 
 ds = 2
 trial = True
@@ -284,7 +283,7 @@ def refitting_models(
         if trial == True:
             csv_path = '.'
             
-        X_train_val, _, y_train_val, _ = read_pickled_input_files(csv_path)
+        X_train_val, y_train_val = read_pickled_input_files(csv_path)
 
         loop_counter = 0
 
@@ -430,6 +429,10 @@ def refitting_models(
         wandb.log_artifact(default_rf_artifact)
         wandb.finish()
 
+        print('----------------------------------------------------------------------------')
+        print('Final Fit Starts')
+        print('----------------------------------------------------------------------------')
+
         if trained_logit_model != None:
             # store logit model
             logging.info("REFITTING_MODELS: %s", "processing logit model.")
@@ -546,7 +549,11 @@ def refitting_models(
             wandb.log_artifact(lgb_artifact)
             wandb.finish()
 
-        
+
+        print('----------------------------------------------------------------------------')
+        print('Final Fit Ends')
+        print('----------------------------------------------------------------------------')
+                
         logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
         
         wandb.init(project=wandb_project)
@@ -630,8 +637,7 @@ def fit_logistic_model(
         
         logit_model = LogisticRegression()
 
-        clf = HalvingGridSearchCV(
-            factor=3,
+        clf = GridSearchCV(
             estimator=logit_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -705,16 +711,16 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_grid = None
         if ds == 1:
             dt_grid = {
-                "max_depth": [_ for _ in np.arange(1, 40 + 1, 1)],
-                "max_features": ['sqrt', 'log2'],
-                "min_samples_split": [_ for _ in np.arange(1, 40 + 1, 1)],
+                "max_depth": [_ for _ in np.arange(1, 40 + 5, 5)],
+                "max_features": ['sqrt', 'log2', None],
+                "min_samples_split": [_ for _ in np.arange(1, 40 + 5, 5)],
                 "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
                 "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
             }
         else:
             dt_grid = {
-                "max_depth": [_ for _ in np.arange(1, 20 + 1, 1)],
-                "max_features": ['sqrt', 'log2'],
+                "max_depth": [_ for _ in np.arange(1, 20 + 5, 5)],
+                "max_features": ['sqrt', 'log2', None],
                 "min_samples_leaf": [_ for _ in np.arange(1, 15 + 1, 1)],
                 "min_samples_split": [_ for _ in np.arange(1, 10 + 1, 1)],
                 "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
@@ -725,8 +731,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         
         dt_clf = DecisionTreeClassifier(random_state=random_state)
 
-        clf = HalvingGridSearchCV(
-            factor=3,
+        clf = GridSearchCV(
             estimator=dt_clf,
             cv=inner_cv,
             refit=optimization_metric,
@@ -802,23 +807,23 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_grid = None 
         if ds == 1:
             rf_grid = {
-                "max_depth": [_ for _ in np.arange(5, 50 + 5, 5)],
-                "n_estimators": [_ for _ in np.arange(50, 600 + 50, 50)],
-                "max_features": ['sqrt', 'log2'], 
+                "max_depth": [_ for _ in np.arange(1, 50 + 10, 10)],
+                "n_estimators": [_ for _ in np.arange(50, 500 + 100, 100)],
+                "max_features": ['sqrt', 'log2', None], 
                 "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
                 "min_samples_split": [_ for _ in np.arange(2, 30 + 5, 5)],
                 "criterion": ["gini", "entropy", "log_loss"],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
             }
         else:
             rf_grid = {
-                "max_depth": [_ for _ in np.arange(1, 20 + 2, 2)],
-                "n_estimators": [_ for _ in np.arange(50, 300 + 50, 50)],
-                "max_features": ['sqrt', 'log2'], 
+                "max_depth": [_ for _ in np.arange(1, 20 + 5, 5)],
+                "n_estimators": [_ for _ in np.arange(50, 300 + 100, 100)],
+                "max_features": ['sqrt', 'log2', None], 
                 "min_samples_leaf": [_ for _ in np.arange(1, 20 + 5, 5)],
                 "min_samples_split": [_ for _ in np.arange(2, 20 + 5, 5)],
                 "criterion": ["gini", "entropy", "log_loss"],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
             }
         
         if trial == True:
@@ -826,8 +831,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             
         rf_model = RandomForestClassifier()
 
-        clf = HalvingGridSearchCV(
-            factor=3,
+        clf = GridSearchCV(
             estimator=rf_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -906,36 +910,34 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         xgb_grid = None
         if ds == 1:
             xgb_grid = {   
-                # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
-                "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
-                "max_depth": [_ for _ in np.arange(1, 30 + 5, 5)],
-                "reg_alpha": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "reg_lambda": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
-                "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.1, 0.1)],
-                # "colsample_bytree": [_ for _ in np.arange(0.2, 0.9+0.1, 0.1)],
-                "min_child_weight": [_ for _ in np.arange(1, 7+1, 1)],
-        }
+                    # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                    "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
+                    "max_depth": [_ for _ in np.arange(1, 30 + 10, 10)],
+                    "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
+                    "reg_lambda": [_ for _ in np.arange(1, 10 + 2, 2)],
+                    "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.2, 0.2)],
+                    # "colsample_bytree": [_ for _ in np.arange(0.2, 0.9+0.1, 0.1)],
+                    "min_child_weight": [_ for _ in np.arange(1, 7+2, 2)],
+            }
         else:
             xgb_grid = {   
                 # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
                 # "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
-                "max_depth": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "reg_alpha": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "reg_lambda": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
-                "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.1, 0.1)],
-                # "colsample_bytree": [_ for _ in np.arange(0.2, 0.9+0.1, 0.1)],
-                "min_child_weight": [_ for _ in np.arange(1, 7+1, 1)],
-        }
+                "max_depth": [_ for _ in np.arange(1, 10 + 2, 2)],
+                "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
+                "reg_lambda": [_ for _ in np.arange(1, 10 + 2, 2)],
+                "n_estimators": [_ for _ in np.arange(100, 300+100, 100)],
+                "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.2, 0.2)],
+                "min_child_weight": [_ for _ in np.arange(1, 7+2, 2)],
+            }
 
         if trial == True:
             xgb_grid = {"learning_rate": [0.1]}
             
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
-        clf = HalvingGridSearchCV(
-            factor=3,
+        clf = GridSearchCV(
             estimator=xgb_model,
             cv=inner_cv,
             refit=optimization_metric,
@@ -1018,22 +1020,22 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_grid = None
         if ds == 1:
             lgb_grid = {
-                    "max_depth": [_ for _ in np.arange(1, 10+2, 2)],
-                    "lambda_l1": [_ for _ in np.arange(1, 10+1, 1)],
-                    "lambda_l2": [_ for _ in np.arange(1, 10+1, 1)],
+                    "max_depth": [_ for _ in np.arange(1, 10+3, 3)],
+                    "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
+                    "lambda_l2": [_ for _ in np.arange(1, 10+2, 2)],
                     "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
-                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.2)],
                     "min_data_in_leaf": [_ for _ in np.arange(50, 250+50, 50)],
                     "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
             }
         else:
             lgb_grid = {
                     "max_depth": [_ for _ in np.arange(1, 10+2, 2)],
-                    "lambda_l1": [_ for _ in np.arange(1, 10+1, 1)],
-                    "lambda_l2": [_ for _ in np.arange(1, 10+1, 1)],
+                    "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
+                    "lambda_l2": [_ for _ in np.arange(1, 10+2, 2)],
                     "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
-                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
-                    "min_data_in_leaf": [_ for _ in np.arange(10, 50+15, 15)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
+                    "min_data_in_leaf": [_ for _ in np.arange(10, 30+10, 10)],
                     "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
             }
 
@@ -1042,8 +1044,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         if trial == True:
             lgb_grid = {"num_leaves": [31]}
         
-        clf = HalvingGridSearchCV(
-            factor=3,
+        clf = GridSearchCV(
             estimator=lgb_model,
             cv=inner_cv,
             refit=optimization_metric,

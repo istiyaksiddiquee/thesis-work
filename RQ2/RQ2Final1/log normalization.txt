@@ -1,0 +1,1 @@
+size, max_breadth, characteristic_distance
