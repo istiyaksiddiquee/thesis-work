@@ -711,19 +711,19 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_grid = None
         if ds == 1:
             dt_grid = {
-                "max_depth": [_ for _ in np.arange(1, 40 + 5, 5)],
-                "max_features": ['sqrt', 'log2', None],
+                "max_depth": [_ for _ in np.arange(1, 40 + 10, 10)],
+                # "max_features": ['sqrt', 'log2', None],
                 "min_samples_split": [_ for _ in np.arange(1, 40 + 5, 5)],
                 "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
             }
         else:
             dt_grid = {
                 "max_depth": [_ for _ in np.arange(1, 20 + 5, 5)],
-                "max_features": ['sqrt', 'log2', None],
-                "min_samples_leaf": [_ for _ in np.arange(1, 15 + 1, 1)],
+                # "max_features": ['sqrt', 'log2', None],
+                "min_samples_leaf": [_ for _ in np.arange(1, 15 + 3, 3)],
                 "min_samples_split": [_ for _ in np.arange(1, 10 + 1, 1)],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.01, 0.01)]
+                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
             }
         
         if trial == True:
@@ -807,23 +807,23 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_grid = None 
         if ds == 1:
             rf_grid = {
-                "max_depth": [_ for _ in np.arange(1, 50 + 10, 10)],
-                "n_estimators": [_ for _ in np.arange(50, 500 + 100, 100)],
-                "max_features": ['sqrt', 'log2', None], 
-                "min_samples_leaf": [_ for _ in np.arange(1, 30 + 5, 5)],
-                "min_samples_split": [_ for _ in np.arange(2, 30 + 5, 5)],
-                "criterion": ["gini", "entropy", "log_loss"],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
+                    "max_depth": [_ for _ in np.arange(1, 50 + 15, 15)],
+                    "n_estimators": [_ for _ in np.arange(50, 500 + 100, 100)],
+                    # "max_features": ['sqrt', 'log2', None], 
+                    "min_samples_leaf": [_ for _ in np.arange(1, 30 + 10, 10)],
+                    "min_samples_split": [_ for _ in np.arange(2, 30 + 5, 5)],
+                    "criterion": ["entropy"],
+                    "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.04, 0.04)]
             }
         else:
             rf_grid = {
-                "max_depth": [_ for _ in np.arange(1, 20 + 5, 5)],
-                "n_estimators": [_ for _ in np.arange(50, 300 + 100, 100)],
-                "max_features": ['sqrt', 'log2', None], 
-                "min_samples_leaf": [_ for _ in np.arange(1, 20 + 5, 5)],
-                "min_samples_split": [_ for _ in np.arange(2, 20 + 5, 5)],
-                "criterion": ["gini", "entropy", "log_loss"],
-                "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
+                    "max_depth": [_ for _ in np.arange(1, 20 + 5, 5)],
+                    "n_estimators": [_ for _ in np.arange(50, 300 + 100, 100)],
+                    # "max_features": ['sqrt', 'log2', None], 
+                    "min_samples_leaf": [_ for _ in np.arange(1, 20 + 5, 5)],
+                    "min_samples_split": [_ for _ in np.arange(2, 20 + 5, 5)],
+                    # "criterion": ["entropy"],
+                    "min_impurity_decrease": [_ for _ in np.arange(0.005, 0.1+0.02, 0.02)]
             }
         
         if trial == True:
@@ -911,9 +911,9 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         if ds == 1:
             xgb_grid = {   
                     # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
-                    "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
+                    # "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
                     "max_depth": [_ for _ in np.arange(1, 30 + 10, 10)],
-                    "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
+                    # "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
                     "reg_lambda": [_ for _ in np.arange(1, 10 + 2, 2)],
                     "n_estimators": [_ for _ in np.arange(100, 250+50, 50)],
                     "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.2, 0.2)],
@@ -925,12 +925,13 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
                 # "gamma": [_ for _ in np.arange(0.1, 1+0.1, 0.1)],
                 # "subsample": [_ for _ in np.arange(0.2, 1 + 0.2, 0.2)],
                 "max_depth": [_ for _ in np.arange(1, 10 + 2, 2)],
-                "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
+                # "reg_alpha": [_ for _ in np.arange(1, 10 + 2, 2)],
                 "reg_lambda": [_ for _ in np.arange(1, 10 + 2, 2)],
                 "n_estimators": [_ for _ in np.arange(100, 300+100, 100)],
                 "learning_rate": [_ for _ in np.arange(0.1, 1 + 0.2, 0.2)],
                 "min_child_weight": [_ for _ in np.arange(1, 7+2, 2)],
             }
+
 
         if trial == True:
             xgb_grid = {"learning_rate": [0.1]}
@@ -1021,24 +1022,23 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         if ds == 1:
             lgb_grid = {
                     "max_depth": [_ for _ in np.arange(1, 10+3, 3)],
-                    "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
-                    "lambda_l2": [_ for _ in np.arange(1, 10+2, 2)],
+                    # "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
+                    "lambda_l2": [_ for _ in np.arange(1, 10+3, 3)],
                     "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
-                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.1, 0.2)],
+                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.3, 0.3)],
                     "min_data_in_leaf": [_ for _ in np.arange(50, 250+50, 50)],
-                    "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
+                    "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.3, 0.3)],
             }
         else:
             lgb_grid = {
-                    "max_depth": [_ for _ in np.arange(1, 10+2, 2)],
-                    "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
-                    "lambda_l2": [_ for _ in np.arange(1, 10+2, 2)],
-                    "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
-                    "learning_rate": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
-                    "min_data_in_leaf": [_ for _ in np.arange(10, 30+10, 10)],
-                    "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
+                "max_depth": [_ for _ in np.arange(1, 10+3, 3)],
+                # "lambda_l1": [_ for _ in np.arange(1, 10+2, 2)],
+                "lambda_l2": [_ for _ in np.arange(1, 10+3, 3)],
+                "num_leaves": [_ for _ in np.arange(50, 80+15, 15)],
+                "learning_rate": [_ for _ in np.arange(0.1, 1+0.3, 0.3)],
+                "min_data_in_leaf": [_ for _ in np.arange(10, 30+15, 15)],
+                "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
             }
-
         lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
 
         if trial == True:
