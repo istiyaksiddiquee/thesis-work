@@ -26,18 +26,23 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 
-ds = 2
-trial = True
+# RQ2Final1, RQ2Final2, RQ3Final1, RQ3Final2, RQ3Final3, RQ3Final4, RQ4Final1
+
+# experiment related settings
+ds = 1
+trial = False
+feature_selection = 1
+wandb_project = "RQ2Final1"
+folder_path = "RQ2Final1"
+
+normalization_columns = []
+selected_columns = ['depth', 'max_breadth', 'strongly_cc',  'size_of_scc', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+
+# codebase related settings
 random_state = 7
 data_imputation = 1
-feature_selection = 1
-wandb_project = "RQ2TestRun2"
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
-
-columns = ['depth', 'max_breadth', 'strongly_cc',  'size_of_scc', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
-normalization_columns = []
-selected_columns = []
 
 class CLFOutput:
     def __init__(self, gridsearch_dict: dict, score: float) -> None:
@@ -121,6 +126,7 @@ def process_gridcv_results(cv_result_df):
     }
 
 def read_pickled_input_files(file_path: str):
+    
     if file_path == None:
         logging.error("READING_FILES: %s", "file path must be provided.")
         return
@@ -128,25 +134,14 @@ def read_pickled_input_files(file_path: str):
     X_train_val = None
     y_train_val = None
 
-
-    X_train_val_file_name = "x_train_val.pickle"
-    y_train_val_file_name = "y_train_val.pickle"
-    
-    if feature_selection != 1:
-        X_train_val_file_name = "x_train_val_full.pickle"
-        y_train_val_file_name = "y_train_val_full.pickle"
-    
-    if ds == 2: 
-        X_train_val_file_name = "fibvid_x_train_val.pickle"
-        y_train_val_file_name = "fibvid_y_train_val.pickle"
+    X_train_val_file_name = file_path + "_x_train_val.pickle"
+    y_train_val_file_name = file_path + "_y_train_val.pickle"
         
     with open(os.path.join(file_path, X_train_val_file_name), "rb") as file:
         X_train_val = pickle.load(file)
     
     with open(os.path.join(file_path, y_train_val_file_name) , "rb") as file:
         y_train_val = pickle.load(file)
-    
-    X_train_val = X_train_val[columns]
     
     return X_train_val, y_train_val
 
@@ -163,8 +158,15 @@ def nested_loop() -> list[CLFOutput]:
     try:
 
         logging.info("NESTED_LOOP: %s", "initiating processing, reading files")
-        csv_path = "."
-        X_train_val, y_train_val = read_pickled_input_files(csv_path)
+        # csv_path = "."
+        X_train_val, y_train_val = read_pickled_input_files(folder_path)
+        
+        if ds == 1:
+            X_train_val.drop(['strongly_cc', 'size_of_scc'], axis=1, inplace=True)
+        else:
+        
+            X_train_val.drop(['strongly_cc', 'size_of_scc', 'weakly_cc', 'avg_cluster_coef'], axis=1, inplace=True)
+            X_train_val = X_train_val.iloc[:, 3:len(list(X_train_val))]
 
         # call the nested loop to get all the trained models
         logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {y_train_val.shape}")
@@ -193,18 +195,14 @@ def nested_loop() -> list[CLFOutput]:
 
             logging.info("NESTED_LOOP: %s", "feature scaling")
             normalized_df = copy(X_train)
-            # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-            # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-            # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
             
-            if 'size' in columns:
-                normalized_df['size'] = np.log(normalized_df['max_breadth'])
-            
-            if 'size_of_scc' in columns:
-                normalized_df['size_of_scc'] = np.log(normalized_df['size_of_scc'])
-            
-            if 'layer_ratio' in columns:
-                normalized_df['layer_ratio'] = np.log(normalized_df['layer_ratio'])
+            for item in normalization_columns:
+                if ds == 1 and item == 'characteristic_distance':
+                    cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+                    cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+                    normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+                else:
+                    normalized_df[item] = np.log(normalized_df[item])
             
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
@@ -213,6 +211,9 @@ def nested_loop() -> list[CLFOutput]:
             if data_imputation != 1:
                 scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
 
+            if feature_selection == 1:
+                scaled_resampled_X_train = scaled_resampled_X_train[selected_columns]
+            
             inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
@@ -280,12 +281,19 @@ def refitting_models(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     try:
-        csv_path = "/root/workflows"
+        # csv_path = "/root/workflows"
         
-        if trial == True:
-            csv_path = '.'
+        # if trial == True:
+        #     csv_path = '.'
             
-        X_train_val, y_train_val = read_pickled_input_files(csv_path)
+        X_train_val, y_train_val = read_pickled_input_files(folder_path)
+        
+        if ds == 1:
+            X_train_val.drop(['strongly_cc', 'size_of_scc'], axis=1, inplace=True)
+        else:
+        
+            X_train_val.drop(['strongly_cc', 'size_of_scc', 'weakly_cc', 'avg_cluster_coef'], axis=1, inplace=True)
+            X_train_val = X_train_val.iloc[:, 3:len(list(X_train_val))]
 
         loop_counter = 0
 
@@ -362,27 +370,13 @@ def refitting_models(
         logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
         normalized_df = copy(X_train_val)
         
-        # cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-        # cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-        # normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-        # normalized_df["depth"] = np.log(normalized_df["depth"])
-        # normalized_df["max_breadth"] = np.log(normalized_df["max_breadth"])
-        
-        if 'size' in columns:
-            normalized_df['size'] = np.log(normalized_df['max_breadth'])
-        
-        if 'size_of_scc' in columns:
-            normalized_df['size_of_scc'] = np.log(normalized_df['size_of_scc'])
-        
-        if 'layer_ratio' in columns:
-            normalized_df['layer_ratio'] = np.log(normalized_df['layer_ratio'])
-        
-        # if feature_selection != 1:
-        #     if 'size' in columns:
-        #         normalized_df["size"] = np.log(normalized_df["size"])
-            
-        #     if 'strongly_cc' in columns:
-        #         normalized_df["strongly_cc"] = np.log(normalized_df["strongly_cc"])
+        for item in normalization_columns:
+            if ds == 1 and item == 'characteristic_distance':
+                cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+                cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+                normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
+            else:
+                normalized_df[item] = np.log(normalized_df[item])
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train_val = scaler.fit_transform(normalized_df)
@@ -390,6 +384,9 @@ def refitting_models(
         
         if data_imputation != 1:
             scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
+            
+        if feature_selection == 1:
+            scaled_resampled_X_train_val = scaled_resampled_X_train_val[selected_columns]
 
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
