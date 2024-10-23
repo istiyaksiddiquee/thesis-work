@@ -209,14 +209,15 @@ def nested_loop() -> list[CLFOutput]:
             
             scaler = StandardScaler().set_output(transform="pandas")
             scaled_X_train = scaler.fit_transform(normalized_df)
+            
+            if feature_selection == 1:
+                scaled_X_train = scaled_X_train[selected_columns]
+            
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
             
             if data_imputation != 1:
                 scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
 
-            if feature_selection == 1:
-                scaled_resampled_X_train = scaled_resampled_X_train[selected_columns]
-            
             inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
@@ -374,14 +375,15 @@ def refitting_models(
 
         scaler = StandardScaler().set_output(transform="pandas")
         scaled_X_train_val = scaler.fit_transform(normalized_df)
+        
+        if feature_selection == 1:
+            scaled_X_train_val = scaled_X_train_val[selected_columns]
+        
         scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
         
         if data_imputation != 1:
             scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
-            
-        if feature_selection == 1:
-            scaled_resampled_X_train_val = scaled_resampled_X_train_val[selected_columns]
-
+        
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
         stratified_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "stratified")
