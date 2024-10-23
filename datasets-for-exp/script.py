@@ -36,14 +36,14 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 1
+ds = 2
 trial = False
 feature_selection = 1
-wandb_project = "RQ2Final1"
-folder_path = "RQ2Final1"
+wandb_project = "RQ2Final2"
+folder_path = "RQ2Final2"
 
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
-selected_columns = []
+selected_columns = ['depth', 'size', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
 
 # codebase related settings
 random_state = 7
