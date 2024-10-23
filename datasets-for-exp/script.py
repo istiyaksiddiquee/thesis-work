@@ -39,8 +39,8 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 ds = 2
 trial = False
 feature_selection = 1
-wandb_project = "RQ2Final2"
-folder_path = "RQ2Final2"
+wandb_project = "RQ3Final3"
+folder_path = "RQ3Final3"
 
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
 selected_columns = ['depth', 'size', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
