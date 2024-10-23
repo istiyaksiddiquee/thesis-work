@@ -26,17 +26,24 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 
-# RQ2Final1, RQ2Final2, RQ3Final1, RQ3Final2, RQ3Final3, RQ3Final4, RQ4Final1
+# RQ2Final1, RQ3Final1, RQ3Final2 
+# RQ2Final2, RQ3Final3, RQ3Final4, RQ4Final1
 
 # experiment related settings
+
+# direction: check the following before running an experiment 
+# 1. change wandb_project and folder_path according to the experiment name
+# 2. check notebook for normalization column and selected column
+# 3. check codebase related settings
+
 ds = 1
 trial = False
 feature_selection = 1
 wandb_project = "RQ2Final1"
 folder_path = "RQ2Final1"
 
-normalization_columns = []
-selected_columns = ['depth', 'max_breadth', 'strongly_cc',  'size_of_scc', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
+selected_columns = []
 
 # codebase related settings
 random_state = 7
@@ -143,6 +150,9 @@ def read_pickled_input_files(file_path: str):
     with open(os.path.join(file_path, y_train_val_file_name) , "rb") as file:
         y_train_val = pickle.load(file)
     
+    if ds == 2 and file_path != 'RQ3Final2':
+        X_train_val = X_train_val.iloc[:, 2:len(list(X_train_val))]
+    
     return X_train_val, y_train_val
 
 # @workflow
@@ -161,13 +171,6 @@ def nested_loop() -> list[CLFOutput]:
         # csv_path = "."
         X_train_val, y_train_val = read_pickled_input_files(folder_path)
         
-        if ds == 1:
-            X_train_val.drop(['strongly_cc', 'size_of_scc'], axis=1, inplace=True)
-        else:
-        
-            X_train_val.drop(['strongly_cc', 'size_of_scc', 'weakly_cc', 'avg_cluster_coef'], axis=1, inplace=True)
-            X_train_val = X_train_val.iloc[:, 3:len(list(X_train_val))]
-
         # call the nested loop to get all the trained models
         logging.info("NESTED_LOOP: %s", f"shapes of input: {X_train_val.shape}, {y_train_val.shape}")
 
@@ -246,9 +249,10 @@ def nested_loop() -> list[CLFOutput]:
         logging.error("NESTED_LOOP: %s", "ERROR: some error happened, could not finish.")
         logging.error("NESTED_LOOP: %s", error)
 
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Error", text="Your run was interrupted by some exception.")
-        wandb.finish()
+        if not trial:
+            wandb.init(project=wandb_project)
+            wandb.alert(title="Error", text="Your run was interrupted by some exception.")
+            wandb.finish()
     return loop_outputs
 
 # @workflow
@@ -258,9 +262,10 @@ def main_wf():
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    wandb.init(project=wandb_project)
-    wandb.alert(title="Started", text="Your run has started. Mark the time.")
-    wandb.finish()
+    if not trial:
+        wandb.init(project=wandb_project)
+        wandb.alert(title="Started", text="Your run has started. Mark the time.")
+        wandb.finish()
 
     loop_outputs = nested_loop()
     refitting_models(loop_outputs=loop_outputs)
@@ -281,20 +286,9 @@ def refitting_models(
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     
     try:
-        # csv_path = "/root/workflows"
-        
-        # if trial == True:
-        #     csv_path = '.'
             
         X_train_val, y_train_val = read_pickled_input_files(folder_path)
         
-        if ds == 1:
-            X_train_val.drop(['strongly_cc', 'size_of_scc'], axis=1, inplace=True)
-        else:
-        
-            X_train_val.drop(['strongly_cc', 'size_of_scc', 'weakly_cc', 'avg_cluster_coef'], axis=1, inplace=True)
-            X_train_val = X_train_val.iloc[:, 3:len(list(X_train_val))]
-
         loop_counter = 0
 
         logit_epoch_id = -1
@@ -396,37 +390,38 @@ def refitting_models(
         # train fit_default_rf_classifier with resampled scaled x y
         default_rf = fit_default_rf_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
         
-        wandb.init(project=wandb_project, group="dummy", job_type="final")
-        joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
-        joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
-        joblib.dump(default_rf, "default_rf.joblib")
-        
-        str_dum_artifact = wandb.Artifact(
-            "Stratified-Dummy-Cls",
-            type="model",
-            description="trained stratified dummy model"
-        )
+        if not trial:
+            wandb.init(project=wandb_project, group="dummy", job_type="final")
+            joblib.dump(stratified_dummy_cls, "stratified_dummy_cls.joblib")
+            joblib.dump(most_freq_dummy_cls, "most_freq_dummy_cls.joblib")
+            joblib.dump(default_rf, "default_rf.joblib")
+            
+            str_dum_artifact = wandb.Artifact(
+                "Stratified-Dummy-Cls",
+                type="model",
+                description="trained stratified dummy model"
+            )
 
-        most_freq_dum_artifact = wandb.Artifact(
-            "Most-Freq-Dummy-Cls",
-            type="model",
-            description="trained most freq dummy model"
-        )
-        
-        default_rf_artifact = wandb.Artifact(
-            "Default-RF-Cls",
-            type="model",
-            description="trained default rf model"
-        )
-        
-        str_dum_artifact.add_file("stratified_dummy_cls.joblib")
-        most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
-        default_rf_artifact.add_file("default_rf.joblib")
-        
-        wandb.log_artifact(str_dum_artifact)
-        wandb.log_artifact(most_freq_dum_artifact)
-        wandb.log_artifact(default_rf_artifact)
-        wandb.finish()
+            most_freq_dum_artifact = wandb.Artifact(
+                "Most-Freq-Dummy-Cls",
+                type="model",
+                description="trained most freq dummy model"
+            )
+            
+            default_rf_artifact = wandb.Artifact(
+                "Default-RF-Cls",
+                type="model",
+                description="trained default rf model"
+            )
+            
+            str_dum_artifact.add_file("stratified_dummy_cls.joblib")
+            most_freq_dum_artifact.add_file("most_freq_dummy_cls.joblib")
+            default_rf_artifact.add_file("default_rf.joblib")
+            
+            wandb.log_artifact(str_dum_artifact)
+            wandb.log_artifact(most_freq_dum_artifact)
+            wandb.log_artifact(default_rf_artifact)
+            wandb.finish()
 
         print('----------------------------------------------------------------------------')
         print('Final Fit Starts')
@@ -437,22 +432,23 @@ def refitting_models(
             logging.info("REFITTING_MODELS: %s", "processing logit model.")
             logistic = LogisticRegression(**trained_logit_model)
             refit_logit = logistic.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            
+            if not trial:
+                wandb.init(project=wandb_project, group="logit", job_type="final")
+                joblib.dump(refit_logit, "logit.joblib")
+                logit_artifact = wandb.Artifact(
+                    "Logistic-Model",
+                    type="model",
+                    description="selected Logistic model",
+                    metadata={
+                        "parameters": trained_logit_model,
+                        "epoch": logit_epoch_id,
+                    },
+                )
 
-            wandb.init(project=wandb_project, group="logit", job_type="final")
-            joblib.dump(refit_logit, "logit.joblib")
-            logit_artifact = wandb.Artifact(
-                "Logistic-Model",
-                type="model",
-                description="selected Logistic model",
-                metadata={
-                    "parameters": trained_logit_model,
-                    "epoch": logit_epoch_id,
-                },
-            )
-
-            logit_artifact.add_file("logit.joblib")
-            wandb.log_artifact(logit_artifact)
-            wandb.finish()
+                logit_artifact.add_file("logit.joblib")
+                wandb.log_artifact(logit_artifact)
+                wandb.finish()
 
         if trained_dt_model != None:
 
@@ -461,21 +457,23 @@ def refitting_models(
             dt = DecisionTreeClassifier(**trained_dt_model)
             refit_dt = dt.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
 
-            wandb.init(project=wandb_project, group="dt", job_type="final")
-            joblib.dump(refit_dt, "dt.joblib")
-            dt_artifact = wandb.Artifact(
-                "DT-Model",
-                type="model",
-                description="selected DT model",
-                metadata={
-                    "parameters": trained_dt_model,
-                    "epoch": dt_epoch_id,
-                },
-            )
+            if not trial:
+                
+                wandb.init(project=wandb_project, group="dt", job_type="final")
+                joblib.dump(refit_dt, "dt.joblib")
+                dt_artifact = wandb.Artifact(
+                    "DT-Model",
+                    type="model",
+                    description="selected DT model",
+                    metadata={
+                        "parameters": trained_dt_model,
+                        "epoch": dt_epoch_id,
+                    },
+                )
 
-            dt_artifact.add_file("dt.joblib")
-            wandb.log_artifact(dt_artifact)
-            wandb.finish()
+                dt_artifact.add_file("dt.joblib")
+                wandb.log_artifact(dt_artifact)
+                wandb.finish()
 
         if trained_rf_model != None:
 
@@ -484,21 +482,23 @@ def refitting_models(
             rf = RandomForestClassifier(**trained_rf_model)
             refit_rf = rf.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
 
-            wandb.init(project=wandb_project, group="rf", job_type="final")
-            joblib.dump(refit_rf, "rf.joblib")
-            rf_artifact = wandb.Artifact(
-                "RF-Model",
-                type="model",
-                description="selected RF model",
-                metadata={
-                    "parameters": trained_rf_model,
-                    "epoch": rf_epoch_id,
-                },
-            )
+            if not trial:
+                
+                wandb.init(project=wandb_project, group="rf", job_type="final")
+                joblib.dump(refit_rf, "rf.joblib")
+                rf_artifact = wandb.Artifact(
+                    "RF-Model",
+                    type="model",
+                    description="selected RF model",
+                    metadata={
+                        "parameters": trained_rf_model,
+                        "epoch": rf_epoch_id,
+                    },
+                )
 
-            rf_artifact.add_file("rf.joblib")
-            wandb.log_artifact(rf_artifact)
-            wandb.finish()
+                rf_artifact.add_file("rf.joblib")
+                wandb.log_artifact(rf_artifact)
+                wandb.finish()
 
         if trained_xgb_model != None:
 
@@ -508,21 +508,22 @@ def refitting_models(
             xgboost = xgboost.set_params(**trained_xgb_model)
             refit_xgb = xgboost.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
 
-            wandb.init(project=wandb_project, group="xgb", job_type="final")
-            joblib.dump(refit_xgb, "xgb.joblib")
-            xgb_artifact = wandb.Artifact(
-                "XGB-Model",
-                type="model",
-                description="selected XGB model",
-                metadata={
-                    "parameters": trained_xgb_model,
-                    "epoch": xgb_epoch_id,
-                },
-            )
+            if not trial:
+                wandb.init(project=wandb_project, group="xgb", job_type="final")
+                joblib.dump(refit_xgb, "xgb.joblib")
+                xgb_artifact = wandb.Artifact(
+                    "XGB-Model",
+                    type="model",
+                    description="selected XGB model",
+                    metadata={
+                        "parameters": trained_xgb_model,
+                        "epoch": xgb_epoch_id,
+                    },
+                )
 
-            xgb_artifact.add_file("xgb.joblib")
-            wandb.log_artifact(xgb_artifact)
-            wandb.finish()
+                xgb_artifact.add_file("xgb.joblib")
+                wandb.log_artifact(xgb_artifact)
+                wandb.finish()
 
         if trained_lgb_model != None:
 
@@ -531,22 +532,24 @@ def refitting_models(
             lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
             lgb_model = lgb_model.set_params(**trained_lgb_model)
             refit_lgb = lgb_model.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            
+            if not trial:
 
-            wandb.init(project=wandb_project, group="lgb", job_type="final")
-            joblib.dump(refit_lgb, "lgb.joblib")
-            lgb_artifact = wandb.Artifact(
-                "LGB-Model",
-                type="model",
-                description="selected LGB model",
-                metadata={
-                    "parameters": trained_lgb_model,
-                    "epoch": lgb_epoch_id,
-                },
-            )
+                wandb.init(project=wandb_project, group="lgb", job_type="final")
+                joblib.dump(refit_lgb, "lgb.joblib")
+                lgb_artifact = wandb.Artifact(
+                    "LGB-Model",
+                    type="model",
+                    description="selected LGB model",
+                    metadata={
+                        "parameters": trained_lgb_model,
+                        "epoch": lgb_epoch_id,
+                    },
+                )
 
-            lgb_artifact.add_file("lgb.joblib")
-            wandb.log_artifact(lgb_artifact)
-            wandb.finish()
+                lgb_artifact.add_file("lgb.joblib")
+                wandb.log_artifact(lgb_artifact)
+                wandb.finish()
 
 
         print('----------------------------------------------------------------------------')
@@ -555,17 +558,19 @@ def refitting_models(
                 
         logging.info("REFITTING_MODELS: %s", "process complete, returning to base.")
         
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Complete", text="Your run is complete. Check the board.")
-        wandb.finish()
+        if not trial:        
+            wandb.init(project=wandb_project)
+            wandb.alert(title="Complete", text="Your run is complete. Check the board.")
+            wandb.finish()
         
     except Exception as error:
         logging.error("NESTED_LOOP: %s", "ERROR: some error happened, could not finish.")
         logging.error("NESTED_LOOP: %s", error)
 
-        wandb.init(project=wandb_project)
-        wandb.alert(title="Error", text="Your run was interrupted by some exception inside model fitting.")
-        wandb.finish()
+        if not trial:
+            wandb.init(project=wandb_project)
+            wandb.alert(title="Error", text="Your run was interrupted by some exception inside model fitting.")
+            wandb.finish()
 
     return
 
@@ -653,38 +658,39 @@ def fit_logistic_model(
         logging.error("FIT_LOGIT_MODEL: %s", f"An exception occurred: {error}")
 
     if logit_result != None:
-        wandb.init(project=wandb_project, group="logit", job_type=epoch_str)
-        
-        logit_model = logit_result.best_estimator_
-        logit_best_grid_param = logit_model.get_params()
+        if not trial:
+            wandb.init(project=wandb_project, group="logit", job_type=epoch_str)
+            
+            logit_model = logit_result.best_estimator_
+            logit_best_grid_param = logit_model.get_params()
 
-        logit_Y_pred = logit_model.predict(X_val.values)
-        logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
-        logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
-        wandb.log(logit_custom_score)
-        
-        logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
-        logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-        wandb.log(process_gridcv_results(logit_cv_result_df))
-        
-        wandb.log(
-            {
-                "best_parameters": logit_result.best_params_,
-                "best_score": logit_result.best_score_
-            }
-        )
-        
-        logit_cv_result_artifact = wandb.Artifact(
-            "logit_cv_result_artifact_" + epoch_str, 
-            type="cv_result"
-        )
-        
-        logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
-        logit_cv_result_df.to_csv(logit_cv_file_name)
-        logit_cv_result_artifact.add_file(logit_cv_file_name)
-        wandb.log_artifact(logit_cv_result_artifact)
+            logit_Y_pred = logit_model.predict(X_val.values)
+            logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
+            logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
+            wandb.log(logit_custom_score)
+            
+            logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
+            logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+            wandb.log(process_gridcv_results(logit_cv_result_df))
+            
+            wandb.log(
+                {
+                    "best_parameters": logit_result.best_params_,
+                    "best_score": logit_result.best_score_
+                }
+            )
+            
+            logit_cv_result_artifact = wandb.Artifact(
+                "logit_cv_result_artifact_" + epoch_str, 
+                type="cv_result"
+            )
+            
+            logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
+            logit_cv_result_df.to_csv(logit_cv_file_name)
+            logit_cv_result_artifact.add_file(logit_cv_file_name)
+            wandb.log_artifact(logit_cv_result_artifact)
 
-        wandb.finish()
+            wandb.finish()
         logit_score = logit_custom_score[default_metric]
 
     logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
@@ -747,38 +753,39 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         logging.error("FIT_DT_MODEL: %s", f"An exception occurred: {error}")
 
     if dt_result != None:
-        wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
-        
-        dt_model = dt_result.best_estimator_
-        dt_best_grid_param = dt_model.get_params()
-        dt_Y_pred = dt_model.predict(X_val.values)
-        dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
-        dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
-        wandb.log(dt_custom_score)
-        
-        dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
-        dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-        wandb.log(process_gridcv_results(dt_cv_result_df))
-        
-        wandb.log(
-            {
-                "best_parameters": dt_result.best_params_,
-                "best_score": dt_result.best_score_
-            }
-        )
+        if not trial:
+            wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
+            
+            dt_model = dt_result.best_estimator_
+            dt_best_grid_param = dt_model.get_params()
+            dt_Y_pred = dt_model.predict(X_val.values)
+            dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
+            dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
+            wandb.log(dt_custom_score)
+            
+            dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
+            dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+            wandb.log(process_gridcv_results(dt_cv_result_df))
+            
+            wandb.log(
+                {
+                    "best_parameters": dt_result.best_params_,
+                    "best_score": dt_result.best_score_
+                }
+            )
 
-        dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
-        dt_cv_result_artifact = wandb.Artifact(
-            "dt_cv_result_artifact_" + epoch_str, 
-            type="cv_result"
-        )
-        
-        dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
-        dt_cv_result_df.to_csv(dt_cv_file_name)
-        dt_cv_result_artifact.add_file(dt_cv_file_name)
-        wandb.log_artifact(dt_cv_result_artifact)
+            dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
+            dt_cv_result_artifact = wandb.Artifact(
+                "dt_cv_result_artifact_" + epoch_str, 
+                type="cv_result"
+            )
+            
+            dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
+            dt_cv_result_df.to_csv(dt_cv_file_name)
+            dt_cv_result_artifact.add_file(dt_cv_file_name)
+            wandb.log_artifact(dt_cv_result_artifact)
 
-        wandb.finish()
+            wandb.finish()
         dt_score = dt_custom_score[default_metric]
 
     logging.info("FIT_DT_MODEL: %s", "dt run completed.")
@@ -847,39 +854,40 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         logging.error("FIT_RF_MODEL: %s", f"An exception occurred: {error}")
 
     if rf_result != None:
-        wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
-        
-        rf_model = rf_result.best_estimator_
-        rf_best_grid_param = rf_model.get_params()
-        rf_Y_pred = rf_model.predict(X_val.values)
-        rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
-        rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
-        wandb.log(rf_custom_score)
-        
-        rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
-        rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-        wandb.log(process_gridcv_results(rf_cv_result_df))
-        
-        wandb.log(
-            {
-                "best_parameters": rf_result.best_params_,
-                "best_score": rf_result.best_score_
-            }
-        )
+        if not trial:
+            wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
+            
+            rf_model = rf_result.best_estimator_
+            rf_best_grid_param = rf_model.get_params()
+            rf_Y_pred = rf_model.predict(X_val.values)
+            rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
+            rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
+            wandb.log(rf_custom_score)
+            
+            rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
+            rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+            wandb.log(process_gridcv_results(rf_cv_result_df))
+            
+            wandb.log(
+                {
+                    "best_parameters": rf_result.best_params_,
+                    "best_score": rf_result.best_score_
+                }
+            )
 
-        rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
-        
-        rf_cv_result_artifact = wandb.Artifact(
-            "rf_cv_result_artifact_" + epoch_str, 
-            type="cv_result"
-        )
-        
-        rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
-        rf_cv_result_df.to_csv(rf_cv_file_name)
-        rf_cv_result_artifact.add_file(rf_cv_file_name)
-        wandb.log_artifact(rf_cv_result_artifact)
+            rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
+            
+            rf_cv_result_artifact = wandb.Artifact(
+                "rf_cv_result_artifact_" + epoch_str, 
+                type="cv_result"
+            )
+            
+            rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
+            rf_cv_result_df.to_csv(rf_cv_file_name)
+            rf_cv_result_artifact.add_file(rf_cv_file_name)
+            wandb.log_artifact(rf_cv_result_artifact)
 
-        wandb.finish()
+            wandb.finish()
 
         rf_score = rf_custom_score[default_metric]
 
@@ -954,45 +962,46 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         logging.error("FIT_XGB_MODEL: %s", f"An exception occurred: {error}")
 
     if xgb_result != None:
-        try:
-            wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
+        if not trial:
+            try:
+                wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
+                
+                xgb_model = xgb_result.best_estimator_
+                xgb_best_grid_param = xgb_model.get_params()
+                
+                
+                xgb_Y_pred = xgb_model.predict(X_val.values)
+                xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
+                xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+                wandb.log(xgb_custom_score)
+                
+                xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
+                xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+                wandb.log(process_gridcv_results(xgb_cv_result_df))
             
-            xgb_model = xgb_result.best_estimator_
-            xgb_best_grid_param = xgb_model.get_params()
-            
-            
-            xgb_Y_pred = xgb_model.predict(X_val.values)
-            xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
-            xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
-            wandb.log(xgb_custom_score)
-            
-            xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
-            xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-            wandb.log(process_gridcv_results(xgb_cv_result_df))
-        
-            wandb.log(
-                {
-                    "best_parameters": xgb_result.best_params_,
-                    "best_score": xgb_result.best_score_
-                }
-            )
-            
-            xgb_cv_result_artifact = wandb.Artifact(
-                "xgb_cv_result_artifact_" + epoch_str, 
-                type="cv_result"
-            )
-            
-            xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
-            xgb_cv_result_df.to_csv(xgb_cv_file_name)
-            xgb_cv_result_artifact.add_file(xgb_cv_file_name)
-            wandb.log_artifact(xgb_cv_result_artifact)
+                wandb.log(
+                    {
+                        "best_parameters": xgb_result.best_params_,
+                        "best_score": xgb_result.best_score_
+                    }
+                )
+                
+                xgb_cv_result_artifact = wandb.Artifact(
+                    "xgb_cv_result_artifact_" + epoch_str, 
+                    type="cv_result"
+                )
+                
+                xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
+                xgb_cv_result_df.to_csv(xgb_cv_file_name)
+                xgb_cv_result_artifact.add_file(xgb_cv_file_name)
+                wandb.log_artifact(xgb_cv_result_artifact)
 
-            wandb.finish()
+                wandb.finish()
 
-            xgb_score = xgb_custom_score[default_metric]
-        except Exception as e:
-            logging.error("FIT_XGB_MODEL: %s", "Exception happened inside xgb result processor.")
-            logging.error("FIT_XGB_MODEL: %s", e)
+                xgb_score = xgb_custom_score[default_metric]
+            except Exception as e:
+                logging.error("FIT_XGB_MODEL: %s", "Exception happened inside xgb result processor.")
+                logging.error("FIT_XGB_MODEL: %s", e)
 
     logging.info("FIT_XGB_MODEL: %s", "xgb run completed.")
     clf_output = CLFOutput(xgb_best_grid_param, xgb_score)
@@ -1060,38 +1069,39 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         logging.error("FIT_LGB_MODEL: %s", f"An exception occurred: {error}")
 
     if lgb_result != None:
-        wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
-        
-        lgb_model = lgb_result.best_estimator_
-        lgb_best_grid_param = lgb_model.get_params()
+        if not trial:
+            wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
+            
+            lgb_model = lgb_result.best_estimator_
+            lgb_best_grid_param = lgb_model.get_params()
 
-        lgb_Y_pred = lgb_model.predict(X_val.values)
-        lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
-        lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
-        wandb.log(lgb_custom_score)
-        
-        lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
-        lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-        wandb.log(process_gridcv_results(lgb_cv_result_df))
-        
-        wandb.log(
-            {
-                "best_parameters": lgb_result.best_params_,
-                "best_score": lgb_result.best_score_
-            }
-        )
+            lgb_Y_pred = lgb_model.predict(X_val.values)
+            lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
+            lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
+            wandb.log(lgb_custom_score)
+            
+            lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
+            lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
+            wandb.log(process_gridcv_results(lgb_cv_result_df))
+            
+            wandb.log(
+                {
+                    "best_parameters": lgb_result.best_params_,
+                    "best_score": lgb_result.best_score_
+                }
+            )
 
-        lgb_cv_result_artifact = wandb.Artifact(
-            "lgb_cv_result_artifact_" + epoch_str, 
-            type="cv_result"
-        )
-        
-        lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
-        lgb_cv_result_df.to_csv(lgb_cv_file_name)
-        lgb_cv_result_artifact.add_file(lgb_cv_file_name)
-        wandb.log_artifact(lgb_cv_result_artifact)
+            lgb_cv_result_artifact = wandb.Artifact(
+                "lgb_cv_result_artifact_" + epoch_str, 
+                type="cv_result"
+            )
+            
+            lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
+            lgb_cv_result_df.to_csv(lgb_cv_file_name)
+            lgb_cv_result_artifact.add_file(lgb_cv_file_name)
+            wandb.log_artifact(lgb_cv_result_artifact)
 
-        wandb.finish()
+            wandb.finish()
         lgb_score = lgb_custom_score[default_metric]
 
     logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
