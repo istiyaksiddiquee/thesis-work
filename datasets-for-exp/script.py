@@ -212,6 +212,7 @@ def nested_loop() -> list[CLFOutput]:
             
             if feature_selection == 1:
                 scaled_X_train = scaled_X_train[selected_columns]
+                X_val = X_val[selected_columns]
             
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
             
@@ -378,6 +379,7 @@ def refitting_models(
         
         if feature_selection == 1:
             scaled_X_train_val = scaled_X_train_val[selected_columns]
+            X_val = X_val[selected_columns]
         
         scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
         
