@@ -14,7 +14,6 @@ from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
     fbeta_score,
-    make_scorer,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -24,7 +23,8 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
+from sklearn.experimental import enable_halving_search_cv
+from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 
 # RQ2Final1, RQ3Final1, RQ3Final2 
 # RQ2Final2, RQ3Final3, RQ3Final4, RQ4Final1
@@ -73,18 +73,6 @@ def recall_1(y, y_pred):
     returned_arr = recall_score(y_true=y, y_pred=y_pred, average=None)
     return returned_arr[1]
 
-scorers_for_gridcv = {
-    "accuracy_score": make_scorer(accuracy_score),
-    "precision_0": make_scorer(precision_0, greater_is_better=True),
-    "precision_1": make_scorer(precision_1, greater_is_better=True),
-    "recall_0": make_scorer(recall_0, greater_is_better=True),
-    "recall_1": make_scorer(recall_1, greater_is_better=True),
-    "fbeta_score": make_scorer(fbeta_score, beta=0.5),
-    "balanced_accuracy_score": make_scorer(balanced_accuracy_score),
-    "average_precision_score": make_scorer(average_precision_score),
-    "roc_auc": make_scorer(roc_auc_score)
-}
-
 def get_all_scores(y_real, y_pred, y_scores) -> dict:
     
     accuracy = accuracy_score(y_real, y_pred)
@@ -109,29 +97,6 @@ def get_all_scores(y_real, y_pred, y_scores) -> dict:
         "val_roc_auc": roc_auc
     }    
 
-def process_gridcv_results(cv_result_df):
-    
-    mean_test_accuracy_score = round(cv_result_df['mean_test_accuracy_score'].iloc[0], 2)
-    mean_test_precision_0 = round(cv_result_df['mean_test_precision_0'].iloc[0], 2)
-    mean_test_precision_1 = round(cv_result_df['mean_test_precision_1'].iloc[0], 2)
-    mean_test_recall_0 = round(cv_result_df['mean_test_recall_0'].iloc[0], 2)
-    mean_test_recall_1 = round(cv_result_df['mean_test_recall_1'].iloc[0], 2)
-    mean_test_fbeta_score = round(cv_result_df['mean_test_fbeta_score'].iloc[0], 2)
-    mean_test_balanced_accuracy_score = round(cv_result_df['mean_test_balanced_accuracy_score'].iloc[0], 2)
-    mean_test_average_precision_score = round(cv_result_df['mean_test_average_precision_score'].iloc[0], 2)
-    mean_test_roc_auc = round(cv_result_df['mean_test_roc_auc'].iloc[0], 2)
-        
-    return {
-        "grid_accuracy": mean_test_accuracy_score, 
-        "grid_precision_0": mean_test_precision_0, 
-        "grid_precision_1": mean_test_precision_1, 
-        "grid_recall_0": mean_test_recall_0, 
-        "grid_recall_1": mean_test_recall_1, 
-        "grid_fbeta": mean_test_fbeta_score, 
-        "grid_balanced_accuracy": mean_test_balanced_accuracy_score,
-        "grid_average_precision": mean_test_average_precision_score, 
-        "grid_roc_auc": mean_test_roc_auc
-    }
 
 def read_pickled_input_files(file_path: str):
     
@@ -174,8 +139,7 @@ def nested_loop() -> list[CLFOutput]:
 
         logging.info("NESTED_LOOP: %s", "entering nested loop")
 
-        # outer_cv = RepeatedKFold(n_splits=2, n_repeats=1)
-        outer_cv = KFold(n_splits=5)
+        outer_cv = StratifiedKFold(n_splits=5)
 
         loop_index = 0
 
@@ -183,7 +147,7 @@ def nested_loop() -> list[CLFOutput]:
 
         loop_outputs = []
 
-        for train_index, val_index in outer_cv.split(X_train_val.to_numpy()):
+        for train_index, val_index in outer_cv.split(X_train_val.to_numpy(), y_train_val.to_numpy()):
 
             loop_index += 1
             epoch_str = "epoch_" + str(loop_index)
@@ -217,7 +181,7 @@ def nested_loop() -> list[CLFOutput]:
             if data_imputation != 1:
                 scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
 
-            inner_cv = RepeatedKFold(n_splits=5, n_repeats=3)
+            inner_cv = StratifiedKFold(n_splits=5)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
             
@@ -597,7 +561,7 @@ def fit_default_rf_classifier(x: pd.Series, y: pd.Series):
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_logistic_model(
-    x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str
+    x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str
 ) -> CLFOutput:
     # Logistic Regression
 
@@ -642,13 +606,14 @@ def fit_logistic_model(
         
         logit_model = LogisticRegression()
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
             estimator=logit_model,
+            factor=4,
             cv=inner_cv,
-            refit=optimization_metric,
+            refit=True,
             param_grid=logit_grid,
-            scoring=scorers_for_gridcv,
-            verbose=0,
+            scoring="average_precision",
+            verbose=3,
             n_jobs=-1,
         )
 
@@ -674,10 +639,6 @@ def fit_logistic_model(
             
             wandb.log(logit_custom_score)
             
-            logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
-            logit_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-            wandb.log(process_gridcv_results(logit_cv_result_df))
-            
             wandb.log(
                 {
                     "best_parameters": logit_result.best_params_,
@@ -691,6 +652,7 @@ def fit_logistic_model(
             )
             
             logit_cv_file_name = f"./logit_cv_result_{epoch_str}.csv"
+            logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
             logit_cv_result_df.to_csv(logit_cv_file_name)
             logit_cv_result_artifact.add_file(logit_cv_file_name)
             wandb.log_artifact(logit_cv_result_artifact)
@@ -704,7 +666,7 @@ def fit_logistic_model(
     return clf_output
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
-def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
+def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str) -> CLFOutput:
     # Decision Tree
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -741,13 +703,14 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         
         dt_clf = DecisionTreeClassifier(random_state=random_state)
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
             estimator=dt_clf,
+            factor=4,
             cv=inner_cv,
-            refit=optimization_metric,
+            refit=True,
             param_grid=dt_grid,
-            scoring=scorers_for_gridcv,
-            verbose=0,
+            scoring="average_precision",
+            verbose=3,
             n_jobs=-1,
         )
 
@@ -771,9 +734,6 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
             
             wandb.log(dt_custom_score)
-            dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
-            dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-            wandb.log(process_gridcv_results(dt_cv_result_df))
             
             wandb.log(
                 {
@@ -789,6 +749,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             )
             
             dt_cv_file_name = f"./dt_cv_result_{epoch_str}.csv"
+            dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
             dt_cv_result_df.to_csv(dt_cv_file_name)
             dt_cv_result_artifact.add_file(dt_cv_file_name)
             wandb.log_artifact(dt_cv_result_artifact)
@@ -803,7 +764,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
-def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
+def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str) -> CLFOutput:
     # Random Forest
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -845,13 +806,14 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             
         rf_model = RandomForestClassifier()
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
             estimator=rf_model,
+            factor=4,
             cv=inner_cv,
-            refit=optimization_metric,
+            refit=True,
             param_grid=rf_grid,
-            scoring=scorers_for_gridcv,
-            verbose=0,
+            scoring="average_precision",
+            verbose=3,
             n_jobs=-1,
         )
 
@@ -874,12 +836,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         if not trial:
             wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
             
-            
             wandb.log(rf_custom_score)
-            
-            rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
-            rf_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-            wandb.log(process_gridcv_results(rf_cv_result_df))
             
             wandb.log(
                 {
@@ -896,6 +853,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             )
             
             rf_cv_file_name = f"./rf_cv_result_{epoch_str}.csv"
+            rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
             rf_cv_result_df.to_csv(rf_cv_file_name)
             rf_cv_result_artifact.add_file(rf_cv_file_name)
             wandb.log_artifact(rf_cv_result_artifact)
@@ -909,7 +867,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
     return clf_output
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
-def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
+def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str) -> CLFOutput:
     # XGB
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -956,13 +914,14 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             
         xgb_model = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
 
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
             estimator=xgb_model,
+            factor=4,
             cv=inner_cv,
-            refit=optimization_metric,
+            refit=True,
             param_grid=xgb_grid,
-            scoring=scorers_for_gridcv,
-            verbose=0,
+            scoring="average_precision",
+            verbose=3,
             n_jobs=-1,
         )
 
@@ -986,13 +945,8 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             try:
                 wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
                 
-                
                 wandb.log(xgb_custom_score)
                 
-                xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
-                xgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-                wandb.log(process_gridcv_results(xgb_cv_result_df))
-            
                 wandb.log(
                     {
                         "best_parameters": xgb_result.best_params_,
@@ -1006,6 +960,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
                 )
                 
                 xgb_cv_file_name = f"./xgb_cv_result_{epoch_str}.csv"
+                xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
                 xgb_cv_result_df.to_csv(xgb_cv_file_name)
                 xgb_cv_result_artifact.add_file(xgb_cv_file_name)
                 wandb.log_artifact(xgb_cv_result_artifact)
@@ -1023,7 +978,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     return clf_output
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
-def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: RepeatedKFold, epoch_str: str) -> CLFOutput:
+def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str) -> CLFOutput:
     # LGB
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -1066,13 +1021,14 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         if trial == True:
             lgb_grid = {"num_leaves": [31]}
         
-        clf = GridSearchCV(
+        clf = HalvingGridSearchCV(
             estimator=lgb_model,
+            factor=4,
             cv=inner_cv,
-            refit=optimization_metric,
+            refit=True,
             param_grid=lgb_grid,
-            scoring=scorers_for_gridcv,
-            verbose=0,
+            scoring="average_precision",
+            verbose=3,
             n_jobs=-1,
         )
 
@@ -1098,10 +1054,6 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             
             wandb.log(lgb_custom_score)
             
-            lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
-            lgb_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
-            wandb.log(process_gridcv_results(lgb_cv_result_df))
-            
             wandb.log(
                 {
                     "best_parameters": lgb_result.best_params_,
@@ -1115,6 +1067,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             )
             
             lgb_cv_file_name = f"./lgb_cv_result_{epoch_str}.csv"
+            lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
             lgb_cv_result_df.to_csv(lgb_cv_file_name)
             lgb_cv_result_artifact.add_file(lgb_cv_file_name)
             wandb.log_artifact(lgb_cv_result_artifact)
