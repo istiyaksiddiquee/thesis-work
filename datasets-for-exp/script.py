@@ -40,11 +40,11 @@ ds = 2
 trial = False
 quant = True
 feature_selection = 1
-wandb_project = "RQ3Final4"
-folder_path = "RQ3Final4"
+wandb_project = "RQ4Final1"
+folder_path = "RQ4Final1"
 
-normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
-removed_columns = ['max_breadth']
+normalization_columns = ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+removed_columns = ['virality']
 
 # codebase related settings
 random_state = 7
