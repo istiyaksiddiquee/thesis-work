@@ -36,7 +36,7 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 1
+ds = 2
 trial = False
 feature_selection = 1
 wandb_project = "RQ2Final2"
