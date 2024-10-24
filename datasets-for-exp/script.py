@@ -150,9 +150,6 @@ def read_pickled_input_files(file_path: str):
     with open(os.path.join(file_path, y_train_val_file_name) , "rb") as file:
         y_train_val = pickle.load(file)
     
-    if ds == 2 and file_path != 'RQ3Final2':
-        X_train_val = X_train_val.iloc[:, 2:len(list(X_train_val))]
-    
     return X_train_val, y_train_val
 
 # @workflow
