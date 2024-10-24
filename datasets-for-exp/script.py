@@ -36,14 +36,14 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 2
-trial = False
+ds = 1
+trial = True
 feature_selection = 1
-wandb_project = "RQ4Final1"
-folder_path = "RQ4Final1"
+wandb_project = "RQ2Final1"
+folder_path = "RQ2Final1"
 
-normalization_columns = ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
-selected_columns = ['depth', 'size', 'max_breadth', 'density', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
+removed_columns = ['max_breadth']
 
 # codebase related settings
 random_state = 7
@@ -211,8 +211,8 @@ def nested_loop() -> list[CLFOutput]:
             scaled_X_train = scaler.fit_transform(normalized_df)
             
             if feature_selection == 1:
-                scaled_X_train = scaled_X_train[selected_columns]
-                X_val = X_val[selected_columns]
+                scaled_X_train = scaled_X_train[scaled_X_train.columns[~scaled_X_train.columns.isin(removed_columns)]]
+                X_val = X_val[X_val.columns[~X_val.columns.isin(removed_columns)]]
             
             scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
             
@@ -378,8 +378,7 @@ def refitting_models(
         scaled_X_train_val = scaler.fit_transform(normalized_df)
         
         if feature_selection == 1:
-            scaled_X_train_val = scaled_X_train_val[selected_columns]
-            X_val = X_val[selected_columns]
+            scaled_X_train_val = scaled_X_train_val[scaled_X_train_val.columns[~scaled_X_train_val.columns.isin(removed_columns)]]
         
         scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
         
@@ -662,15 +661,19 @@ def fit_logistic_model(
         logging.error("FIT_LOGIT_MODEL: %s", f"An exception occurred: {error}")
 
     if logit_result != None:
+        
+        logit_model = logit_result.best_estimator_
+        logit_best_grid_param = logit_model.get_params()
+
+        logit_Y_pred = logit_model.predict(X_val.values)
+        logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
+        
+        logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
+        logit_score = logit_custom_score[default_metric]
+        
         if not trial:
             wandb.init(project=wandb_project, group="logit", job_type=epoch_str)
             
-            logit_model = logit_result.best_estimator_
-            logit_best_grid_param = logit_model.get_params()
-
-            logit_Y_pred = logit_model.predict(X_val.values)
-            logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
-            logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
             wandb.log(logit_custom_score)
             
             logit_cv_result_df = pd.DataFrame(logit_result.cv_results_)
@@ -695,7 +698,7 @@ def fit_logistic_model(
             wandb.log_artifact(logit_cv_result_artifact)
 
             wandb.finish()
-        logit_score = logit_custom_score[default_metric]
+        
 
     logging.info("FIT_LOGIT_MODEL: %s", "logit run completed.")
     clf_output = CLFOutput(logit_best_grid_param, logit_score)
@@ -757,16 +760,19 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         logging.error("FIT_DT_MODEL: %s", f"An exception occurred: {error}")
 
     if dt_result != None:
+        dt_model = dt_result.best_estimator_
+        dt_best_grid_param = dt_model.get_params()
+        
+        dt_Y_pred = dt_model.predict(X_val.values)
+        dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
+        
+        dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
+        dt_score = dt_custom_score[default_metric]
+        
         if not trial:
             wandb.init(project=wandb_project, group="dt", job_type=epoch_str)
             
-            dt_model = dt_result.best_estimator_
-            dt_best_grid_param = dt_model.get_params()
-            dt_Y_pred = dt_model.predict(X_val.values)
-            dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
-            dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
             wandb.log(dt_custom_score)
-            
             dt_cv_result_df = pd.DataFrame(dt_result.cv_results_)
             dt_cv_result_df.sort_values(by="rank_test_" + optimization_metric, ascending=True, inplace=True)
             wandb.log(process_gridcv_results(dt_cv_result_df))
@@ -790,7 +796,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             wandb.log_artifact(dt_cv_result_artifact)
 
             wandb.finish()
-        dt_score = dt_custom_score[default_metric]
+        
 
     logging.info("FIT_DT_MODEL: %s", "dt run completed.")
     
@@ -858,14 +864,19 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         logging.error("FIT_RF_MODEL: %s", f"An exception occurred: {error}")
 
     if rf_result != None:
+        rf_model = rf_result.best_estimator_
+        rf_best_grid_param = rf_model.get_params()
+        
+        rf_Y_pred = rf_model.predict(X_val.values)
+        rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
+        
+        rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
+        rf_score = rf_custom_score[default_metric]
+        
         if not trial:
             wandb.init(project=wandb_project, group="rf", job_type=epoch_str)
             
-            rf_model = rf_result.best_estimator_
-            rf_best_grid_param = rf_model.get_params()
-            rf_Y_pred = rf_model.predict(X_val.values)
-            rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
-            rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
+            
             wandb.log(rf_custom_score)
             
             rf_cv_result_df = pd.DataFrame(rf_result.cv_results_)
@@ -892,8 +903,6 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             wandb.log_artifact(rf_cv_result_artifact)
 
             wandb.finish()
-
-        rf_score = rf_custom_score[default_metric]
 
     logging.info("FIT_RF_MODEL: %s", "rf run completed.")
 
@@ -966,17 +975,20 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         logging.error("FIT_XGB_MODEL: %s", f"An exception occurred: {error}")
 
     if xgb_result != None:
+        xgb_model = xgb_result.best_estimator_
+        xgb_best_grid_param = xgb_model.get_params()
+        
+        xgb_Y_pred = xgb_model.predict(X_val.values)
+        xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
+        
+        xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+        xgb_score = xgb_custom_score[default_metric]
+        
         if not trial:
             try:
                 wandb.init(project=wandb_project, group="xgb", job_type=epoch_str)
                 
-                xgb_model = xgb_result.best_estimator_
-                xgb_best_grid_param = xgb_model.get_params()
                 
-                
-                xgb_Y_pred = xgb_model.predict(X_val.values)
-                xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
-                xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
                 wandb.log(xgb_custom_score)
                 
                 xgb_cv_result_df = pd.DataFrame(xgb_result.cv_results_)
@@ -1002,7 +1014,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
 
                 wandb.finish()
 
-                xgb_score = xgb_custom_score[default_metric]
+                
             except Exception as e:
                 logging.error("FIT_XGB_MODEL: %s", "Exception happened inside xgb result processor.")
                 logging.error("FIT_XGB_MODEL: %s", e)
@@ -1073,15 +1085,19 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         logging.error("FIT_LGB_MODEL: %s", f"An exception occurred: {error}")
 
     if lgb_result != None:
+        
+        lgb_model = lgb_result.best_estimator_
+        lgb_best_grid_param = lgb_model.get_params()
+
+        lgb_Y_pred = lgb_model.predict(X_val.values)
+        lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
+        
+        lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
+        lgb_score = lgb_custom_score[default_metric]
+            
         if not trial:
             wandb.init(project=wandb_project, group="lgb", job_type=epoch_str)
             
-            lgb_model = lgb_result.best_estimator_
-            lgb_best_grid_param = lgb_model.get_params()
-
-            lgb_Y_pred = lgb_model.predict(X_val.values)
-            lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
-            lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
             wandb.log(lgb_custom_score)
             
             lgb_cv_result_df = pd.DataFrame(lgb_result.cv_results_)
@@ -1106,7 +1122,6 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             wandb.log_artifact(lgb_cv_result_artifact)
 
             wandb.finish()
-        lgb_score = lgb_custom_score[default_metric]
 
     logging.info("FIT_LGB_MODEL: %s", "lgb run completed.")
     clf_output = CLFOutput(lgb_best_grid_param, lgb_score)
