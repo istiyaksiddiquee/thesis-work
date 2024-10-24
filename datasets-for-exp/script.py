@@ -37,7 +37,7 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 # 3. check codebase related settings
 
 ds = 1
-trial = True
+trial = False
 feature_selection = 1
 wandb_project = "RQ2Final1"
 folder_path = "RQ2Final1"
