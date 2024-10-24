@@ -39,11 +39,11 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 ds = 2
 trial = False
 feature_selection = 1
-wandb_project = "RQ2Final2"
-folder_path = "RQ2Final2"
+wandb_project = "RQ3Final3"
+folder_path = "RQ3Final3"
 
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
-removed_columns = ['max_breadth', 'virality']
+removed_columns = ['max_breadth', 'size', 'virality']
 
 # codebase related settings
 random_state = 7
