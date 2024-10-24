@@ -38,12 +38,13 @@ from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
 
 ds = 2
 trial = False
+quant = True
 feature_selection = 1
-wandb_project = "RQ3Final3"
-folder_path = "RQ3Final3"
+wandb_project = "RQ3Final4"
+folder_path = "RQ3Final4"
 
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
-removed_columns = ['max_breadth', 'size', 'virality']
+removed_columns = ['max_breadth']
 
 # codebase related settings
 random_state = 7
@@ -197,7 +198,7 @@ def nested_loop() -> list[CLFOutput]:
             normalized_df = copy(X_train)
             
             for item in normalization_columns:
-                if item == 'characteristic_distance':
+                if quant == True and item == 'characteristic_distance':
                     cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
                     cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
                     normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
@@ -364,7 +365,7 @@ def refitting_models(
         normalized_df = copy(X_train_val)
         
         for item in normalization_columns:
-            if item == 'characteristic_distance':
+            if quant == True and item == 'characteristic_distance':
                 cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
                 cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
                 normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
