@@ -19,11 +19,12 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.dummy import DummyClassifier
+from sklearn.compose import ColumnTransformer
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.experimental import enable_halving_search_cv
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 
 # RQ2Final1, RQ3Final1, RQ3Final2 
@@ -43,7 +44,7 @@ feature_selection = 1
 wandb_project = "RQ4Final1"
 folder_path = "RQ4Final1"
 
-normalization_columns = ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+normalization_columns = ['size', 'max_breadth', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
 removed_columns = ['virality']
 
 # codebase related settings
@@ -126,7 +127,7 @@ def nested_loop() -> list[CLFOutput]:
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     # FORMAT = '%(asctime)-15s %(message)s'
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.DEBUG)
+    logging.basicConfig(format="%(asctime)s LINE: %(lineno)d - %(message)s", level=logging.DEBUG)
 
     try:
 
@@ -158,47 +159,61 @@ def nested_loop() -> list[CLFOutput]:
 
             y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
 
+            if feature_selection == 1:
+                X_train = X_train[X_train.columns[~X_train.columns.isin(removed_columns)]]
+                X_val = X_val[X_val.columns[~X_val.columns.isin(removed_columns)]]
+                
             logging.info("NESTED_LOOP: %s", "feature scaling")
             normalized_df = copy(X_train)
             
-            for item in normalization_columns:
-                if quant == True and item == 'characteristic_distance':
-                    cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-                    cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-                    normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-                else:
-                    normalized_df[item] = np.log(normalized_df[item])
+            log_normalizer = FunctionTransformer(func=np.log)
+            scaler = StandardScaler()
             
-            scaler = StandardScaler().set_output(transform="pandas")
-            scaled_X_train = scaler.fit_transform(normalized_df)
+            preprocessor = ColumnTransformer([
+                ('log_norm', log_normalizer, normalization_columns),  # Columns to log-normalize
+                ('scale', scaler, list(X_train.columns))  # Columns to scale
+            ])
             
-            if feature_selection == 1:
-                scaled_X_train = scaled_X_train[scaled_X_train.columns[~scaled_X_train.columns.isin(removed_columns)]]
-                X_val = X_val[X_val.columns[~X_val.columns.isin(removed_columns)]]
+            if quant == True:
+                cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+                cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+                normalized_df["characteristic_distance"] = normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile
+
+                val_cd_first_quantile = np.quantile(X_val["characteristic_distance"], 0.25)
+                val_cd_third_quantile = np.quantile(X_val["characteristic_distance"], 0.75)
+                X_val["characteristic_distance"] = X_val["characteristic_distance"] + val_cd_first_quantile**2 / val_cd_third_quantile
+                
+            scaled_X_train = preprocessor.fit_transform(normalized_df)
+            scaled_X_val = preprocessor.transform(X_val)
             
-            scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train.to_numpy(), y_train.to_numpy())
+            # only for x_train
+            scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train, y_train)
             
             if data_imputation != 1:
-                scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train.to_numpy()), pd.Series(y_train.to_numpy())
+                scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train), pd.Series(y_train)
 
             inner_cv = StratifiedKFold(n_splits=5)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
             
+            # inside the grid search we are passing the scaled, transformed, resampled x_train. so there is a slight data leakage in the grid search process
+            # but we cannot avoid it, since even if we shift this transformation down to the grid search and combine it with a proprocessor there, 
+            # the same thing will happen as grid search process will not run the transformation on top of the training set leaving the hold out test set 
+            
             logit_output = fit_logistic_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             dt_output = fit_dt_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             xgb_output = fit_xgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             lgb_output = fit_lgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
 
             loop_outputs.append(logit_output)
@@ -326,26 +341,32 @@ def refitting_models(
             loop_counter += 1
 
         logging.info("REFITTING_MODELS: %s", f"models retrieved, re-fitting starts")
-        normalized_df = copy(X_train_val)
-        
-        for item in normalization_columns:
-            if quant == True and item == 'characteristic_distance':
-                cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
-                cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
-                normalized_df["characteristic_distance"] = np.log(normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile)
-            else:
-                normalized_df[item] = np.log(normalized_df[item])
-
-        scaler = StandardScaler().set_output(transform="pandas")
-        scaled_X_train_val = scaler.fit_transform(normalized_df)
         
         if feature_selection == 1:
-            scaled_X_train_val = scaled_X_train_val[scaled_X_train_val.columns[~scaled_X_train_val.columns.isin(removed_columns)]]
+            X_train_val = X_train_val[X_train_val.columns[~X_train_val.columns.isin(removed_columns)]]
+            
+        normalized_df = copy(X_train_val)
         
-        scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val.to_numpy(), y_train_val.to_numpy())
+        log_normalizer = FunctionTransformer(func=np.log)
+        scaler = StandardScaler()
+        
+        preprocessor = ColumnTransformer([
+            ('log_norm', log_normalizer, normalization_columns),  # Columns to log-normalize
+            ('scale', scaler, list(X_train_val.columns))  # Columns to scale
+        ])
+        
+        if quant == True:
+            cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
+            cd_third_quantile = np.quantile(normalized_df["characteristic_distance"], 0.75)
+            normalized_df["characteristic_distance"] = normalized_df["characteristic_distance"] + cd_first_quantile**2 / cd_third_quantile
+            
+        scaled_X_train_val = preprocessor.fit_transform(normalized_df)
+        
+        # only for x_train
+        scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
         
         if data_imputation != 1:
-            scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val.to_numpy()), pd.Series(y_train_val.to_numpy())
+            scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val), pd.Series(y_train_val)
         
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
@@ -396,7 +417,7 @@ def refitting_models(
             # store logit model
             logging.info("REFITTING_MODELS: %s", "processing logit model.")
             logistic = LogisticRegression(**trained_logit_model)
-            refit_logit = logistic.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
             if not trial:
                 wandb.init(project=wandb_project, group="logit", job_type="final")
@@ -420,7 +441,7 @@ def refitting_models(
             # store dt model
             logging.info("REFITTING_MODELS: %s", "processing dt model.")
             dt = DecisionTreeClassifier(**trained_dt_model)
-            refit_dt = dt.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
             if not trial:
                 
@@ -445,7 +466,7 @@ def refitting_models(
             # store rf model
             logging.info("REFITTING_MODELS: %s", "processing rf model.")
             rf = RandomForestClassifier(**trained_rf_model)
-            refit_rf = rf.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
             if not trial:
                 
@@ -471,7 +492,7 @@ def refitting_models(
             logging.info("REFITTING_MODELS: %s", "processing xgb model.")
             xgboost = xgb.XGBClassifier(objective="binary:hinge", nthread=4, seed=random_state)
             xgboost = xgboost.set_params(**trained_xgb_model)
-            refit_xgb = xgboost.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
             if not trial:
                 wandb.init(project=wandb_project, group="xgb", job_type="final")
@@ -496,7 +517,7 @@ def refitting_models(
             logging.info("REFITTING_MODELS: %s", "processing lgb model.")
             lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
             lgb_model = lgb_model.set_params(**trained_lgb_model)
-            refit_lgb = lgb_model.fit(scaled_resampled_X_train_val.values, scaled_resampled_y_train_val.values)
+            refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
             if not trial:
 
@@ -556,13 +577,14 @@ def fit_dummy_classifier(x: pd.Series, y: pd.Series, strategy: str):
 def fit_default_rf_classifier(x: pd.Series, y: pd.Series):
     
     rf_model = RandomForestClassifier()
-    rf_model.fit(x.values, y.values)
+    rf_model.fit(x, y)
     return rf_model
 
 # @task(container_image="istiyaksiddiquee/thesis-round-two:"+wandb_project)
 def fit_logistic_model(
     x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series, Y_val: pd.Series, inner_cv: StratifiedKFold, epoch_str: str
 ) -> CLFOutput:
+    
     # Logistic Regression
 
     os.environ["WANDB_API_KEY"] = "b21f4406f3966154b12e98de3bef934216952a54"
@@ -617,7 +639,7 @@ def fit_logistic_model(
             n_jobs=-1,
         )
 
-        logit_result = clf.fit(x_train_df.values, y_train_df.values)
+        logit_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
         logging.error("FIT_LOGIT_MODEL: %s", "Could not fit Logistic model.")
@@ -628,10 +650,10 @@ def fit_logistic_model(
         logit_model = logit_result.best_estimator_
         logit_best_grid_param = logit_model.get_params()
 
-        logit_Y_pred = logit_model.predict(X_val.values)
-        logit_Y_pred_proba = logit_model.predict_proba(X_val.values)
+        logit_Y_pred = logit_model.predict(X_val)
+        logit_Y_pred_proba = logit_model.predict_proba(X_val)
         
-        logit_custom_score = get_all_scores(Y_val.values, logit_Y_pred, logit_Y_pred_proba[:, 1])
+        logit_custom_score = get_all_scores(Y_val, logit_Y_pred, logit_Y_pred_proba[:, 1])
         logit_score = logit_custom_score[default_metric]
         
         if not trial:
@@ -657,6 +679,22 @@ def fit_logistic_model(
             logit_cv_result_artifact.add_file(logit_cv_file_name)
             wandb.log_artifact(logit_cv_result_artifact)
 
+            # store entire grid search clf object
+            joblib.dump(logit_result, f"logit_gscv_{epoch_str}.joblib")
+            logit_gscv = wandb.Artifact(
+                "Logistic-GSCV",
+                type="gscv",
+                description="trained grid search object",
+                metadata={
+                    "best_parameters": logit_result.best_params_,
+                    "best_score": logit_result.best_score_,
+                    "epoch": epoch_str,
+                },
+            )
+
+            logit_gscv.add_file(f"logit_gscv_{epoch_str}.joblib")
+            wandb.log_artifact(logit_gscv)
+            
             wandb.finish()
         
 
@@ -714,7 +752,7 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             n_jobs=-1,
         )
 
-        dt_result = clf.fit(x_train_df.values, y_train_df.values)
+        dt_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
         logging.error("FIT_DT_MODEL: %s", "Could not fit Decision Tree model")
@@ -724,10 +762,10 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         dt_model = dt_result.best_estimator_
         dt_best_grid_param = dt_model.get_params()
         
-        dt_Y_pred = dt_model.predict(X_val.values)
-        dt_Y_pred_proba = dt_model.predict_proba(X_val.values)
+        dt_Y_pred = dt_model.predict(X_val)
+        dt_Y_pred_proba = dt_model.predict_proba(X_val)
         
-        dt_custom_score = get_all_scores(Y_val.values, dt_Y_pred, dt_Y_pred_proba[:, 1])
+        dt_custom_score = get_all_scores(Y_val, dt_Y_pred, dt_Y_pred_proba[:, 1])
         dt_score = dt_custom_score[default_metric]
         
         if not trial:
@@ -754,6 +792,22 @@ def fit_dt_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             dt_cv_result_artifact.add_file(dt_cv_file_name)
             wandb.log_artifact(dt_cv_result_artifact)
 
+            # store entire grid search clf object
+            joblib.dump(dt_result, f"dt_gscv_{epoch_str}.joblib")
+            dt_gscv = wandb.Artifact(
+                "DT-GSCV",
+                type="gscv",
+                description="trained grid search object",
+                metadata={
+                    "best_parameters": dt_result.best_params_,
+                    "best_score": dt_result.best_score_,
+                    "epoch": epoch_str,
+                },
+            )
+
+            dt_gscv.add_file(f"dt_gscv_{epoch_str}.joblib")
+            wandb.log_artifact(dt_gscv)
+            
             wandb.finish()
         
 
@@ -817,7 +871,7 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             n_jobs=-1,
         )
 
-        rf_result = clf.fit(x_train_df.values, y_train_df.values)
+        rf_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
         logging.error("FIT_RF_MODEL: %s", f"Could not fit Random Forest model.")
@@ -827,10 +881,10 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
         rf_model = rf_result.best_estimator_
         rf_best_grid_param = rf_model.get_params()
         
-        rf_Y_pred = rf_model.predict(X_val.values)
-        rf_Y_pred_proba = rf_model.predict_proba(X_val.values)
+        rf_Y_pred = rf_model.predict(X_val)
+        rf_Y_pred_proba = rf_model.predict_proba(X_val)
         
-        rf_custom_score = get_all_scores(Y_val.values, rf_Y_pred, rf_Y_pred_proba[:, 1])
+        rf_custom_score = get_all_scores(Y_val, rf_Y_pred, rf_Y_pred_proba[:, 1])
         rf_score = rf_custom_score[default_metric]
         
         if not trial:
@@ -858,6 +912,22 @@ def fit_rf_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series,
             rf_cv_result_artifact.add_file(rf_cv_file_name)
             wandb.log_artifact(rf_cv_result_artifact)
 
+            # store entire grid search clf object
+            joblib.dump(rf_result, f"rf_gscv_{epoch_str}.joblib")
+            rf_gscv = wandb.Artifact(
+                "RF-GSCV",
+                type="gscv",
+                description="trained grid search object",
+                metadata={
+                    "best_parameters": rf_result.best_params_,
+                    "best_score": rf_result.best_score_,
+                    "epoch": epoch_str,
+                },
+            )
+
+            rf_gscv.add_file(f"rf_gscv_{epoch_str}.joblib")
+            wandb.log_artifact(rf_gscv)
+            
             wandb.finish()
 
     logging.info("FIT_RF_MODEL: %s", "rf run completed.")
@@ -925,7 +995,7 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             n_jobs=-1,
         )
 
-        xgb_result = clf.fit(x_train_df.values, y_train_df.values)
+        xgb_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
         logging.error("FIT_XGB_MODEL: %s", "Could not fit XGB model")
@@ -935,10 +1005,10 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         xgb_model = xgb_result.best_estimator_
         xgb_best_grid_param = xgb_model.get_params()
         
-        xgb_Y_pred = xgb_model.predict(X_val.values)
-        xgb_Y_pred_proba = xgb_model.predict_proba(X_val.values)
+        xgb_Y_pred = xgb_model.predict(X_val)
+        xgb_Y_pred_proba = xgb_model.predict_proba(X_val)
         
-        xgb_custom_score = get_all_scores(Y_val.values, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
+        xgb_custom_score = get_all_scores(Y_val, xgb_Y_pred, xgb_Y_pred_proba[:, 1])
         xgb_score = xgb_custom_score[default_metric]
         
         if not trial:
@@ -964,9 +1034,24 @@ def fit_xgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
                 xgb_cv_result_df.to_csv(xgb_cv_file_name)
                 xgb_cv_result_artifact.add_file(xgb_cv_file_name)
                 wandb.log_artifact(xgb_cv_result_artifact)
+                
+                # store entire grid search clf object
+                joblib.dump(xgb_result, f"xgb_gscv_{epoch_str}.joblib")
+                xgb_gscv = wandb.Artifact(
+                    "XGB-GSCV",
+                    type="gscv",
+                    description="trained grid search object",
+                    metadata={
+                        "best_parameters": xgb_result.best_params_,
+                        "best_score": xgb_result.best_score_,
+                        "epoch": epoch_str,
+                    },
+                )
 
+                xgb_gscv.add_file(f"xgb_gscv_{epoch_str}.joblib")
+                wandb.log_artifact(xgb_gscv)
+                
                 wandb.finish()
-
                 
             except Exception as e:
                 logging.error("FIT_XGB_MODEL: %s", "Exception happened inside xgb result processor.")
@@ -985,7 +1070,6 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
     os.environ["WANDB_ENTITY"] = "istiyaksiddiquee"
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    
     logging.info("FIT_LGB_MODEL: %s", f"lgb run scheduled for {epoch_str}.")
 
     lgb_result = None
@@ -1032,7 +1116,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             n_jobs=-1,
         )
 
-        lgb_result = clf.fit(x_train_df.values, y_train_df.values)
+        lgb_result = clf.fit(x_train_df, y_train_df)
 
     except Exception as error:
         logging.error("FIT_LGB_MODEL: %s", f"Could not fit XGB model")
@@ -1043,10 +1127,10 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
         lgb_model = lgb_result.best_estimator_
         lgb_best_grid_param = lgb_model.get_params()
 
-        lgb_Y_pred = lgb_model.predict(X_val.values)
-        lgb_Y_pred_proba = lgb_model.predict_proba(X_val.values)
+        lgb_Y_pred = lgb_model.predict(X_val)
+        lgb_Y_pred_proba = lgb_model.predict_proba(X_val)
         
-        lgb_custom_score = get_all_scores(Y_val.values, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
+        lgb_custom_score = get_all_scores(Y_val, lgb_Y_pred, lgb_Y_pred_proba[:, 1])
         lgb_score = lgb_custom_score[default_metric]
             
         if not trial:
@@ -1071,6 +1155,22 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
             lgb_cv_result_df.to_csv(lgb_cv_file_name)
             lgb_cv_result_artifact.add_file(lgb_cv_file_name)
             wandb.log_artifact(lgb_cv_result_artifact)
+
+            # store entire grid search clf object
+            joblib.dump(lgb_result, f"lgb_gscv_{epoch_str}.joblib")
+            lgb_gscv = wandb.Artifact(
+                "LGB-GSCV",
+                type="gscv",
+                description="trained grid search object",
+                metadata={
+                    "best_parameters": lgb_result.best_params_,
+                    "best_score": lgb_result.best_score_,
+                    "epoch": epoch_str,
+                },
+            )
+
+            lgb_gscv.add_file(f"lgb_gscv_{epoch_str}.joblib")
+            wandb.log_artifact(lgb_gscv)
 
             wandb.finish()
 
