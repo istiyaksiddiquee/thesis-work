@@ -39,13 +39,13 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 
 ds = 2
 trial = False
-quant = False
+quant = True
 feature_selection = 1
-wandb_project = "RQ3Final3"
-folder_path = "RQ3Final3"
+wandb_project = "RQ3Final4"
+folder_path = "RQ3Final4"
 
-removed_columns = ['max_breadth', 'size', 'virality']
-normalization_columns = ['characteristic_distance']
+removed_columns = ['max_breadth']
+normalization_columns = [ 'size', 'characteristic_distance']
 
 # codebase related settings
 random_state = 7
