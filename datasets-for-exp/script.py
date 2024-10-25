@@ -38,14 +38,14 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 ds = 2
-trial = True
+trial = False
 quant = True
 feature_selection = 1
 wandb_project = "RQ2Final2"
 folder_path = "RQ2Final2"
 
-normalization_columns = ['size', 'characteristic_distance']
 removed_columns = ['max_breadth', 'virality']
+normalization_columns = ['size', 'characteristic_distance']
 
 # codebase related settings
 random_state = 7
