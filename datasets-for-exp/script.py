@@ -40,16 +40,19 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 ds = 1
 trial = False
 quant = True
-feature_selection = 1
-wandb_project = "RQ3Final1"
-folder_path = "RQ3Final1"
+feature_selection = 0
+data_imputation = 1
+wandb_project = "RQ2Comb2"
+folder_path = "RQ2Final1"
 
 removed_columns = ['size', 'max_breadth']
-normalization_columns = ['characteristic_distance']
+normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
+
+if feature_selection == 1:
+    normalization_columns = list(set(normalization_columns)-set(removed_columns))
 
 # codebase related settings
 random_state = 7
-data_imputation = 1
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
 
@@ -187,10 +190,10 @@ def nested_loop() -> list[CLFOutput]:
             scaled_X_val = preprocessor.transform(X_val)
             
             # only for x_train
-            scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train, y_train)
+            scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train), pd.Series(y_train)
             
-            if data_imputation != 1:
-                scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train), pd.Series(y_train)
+            if data_imputation == 1:
+                scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train, y_train)
 
             inner_cv = StratifiedKFold(n_splits=5)
 
@@ -363,10 +366,10 @@ def refitting_models(
         scaled_X_train_val = preprocessor.fit_transform(normalized_df)
         
         # only for x_train
-        scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
+        scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val), pd.Series(y_train_val)
         
-        if data_imputation != 1:
-            scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val), pd.Series(y_train_val)
+        if data_imputation == 1:
+            scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
         
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
