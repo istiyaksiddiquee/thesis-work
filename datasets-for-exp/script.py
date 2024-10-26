@@ -37,15 +37,15 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 2
+ds = 1
 trial = False
 quant = True
 feature_selection = 1
-wandb_project = "RQ3Final2"
-folder_path = "RQ3Final2"
+wandb_project = "RQ3Final1"
+folder_path = "RQ3Final1"
 
-removed_columns = ['max_breadth']
-normalization_columns = ['size']
+removed_columns = ['size', 'max_breadth']
+normalization_columns = ['characteristic_distance']
 
 # codebase related settings
 random_state = 7
