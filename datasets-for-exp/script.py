@@ -40,7 +40,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 ds = 1
 trial = True
 quant = True
-feature_selection = 0
+feature_selection = 1
 data_imputation = 0
 wandb_project = "RQ2Comb1"
 folder_path = "RQ2Final1"
@@ -58,7 +58,7 @@ if feature_selection == 1:
     for item in removed_columns:
         print(item, original_column_order) 
         if item in normalization_columns:
-            original_column_order.remove('log_norm__max_breadth')
+            original_column_order.remove('log_norm__'+item)
         else:
             original_column_order.remove('scale__' + item)
             
