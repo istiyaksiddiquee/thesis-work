@@ -37,17 +37,17 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 1
+ds = 2
 trial = False
 quant = True
-feature_selection = 0
-data_imputation = 0
-wandb_project = "RQ2Comb4"
-folder_path = "RQ2Final1"
+feature_selection = 1
+data_imputation = 1
+wandb_project = "RQ2Comb5"
+folder_path = "RQ2Final2"
 
 # [depth, size, max_breadth, virality, density, layer_ratio, structural_heterogeneity, characteristic_distance]
 
-removed_columns = ['max_breadth']
+removed_columns = ['max_breadth', 'virality']
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
 
 original_column_order = ['scale__depth', 'log_norm__size', 'log_norm__max_breadth',
