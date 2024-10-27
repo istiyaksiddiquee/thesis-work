@@ -38,7 +38,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 ds = 1
-trial = True
+trial = False
 quant = True
 feature_selection = 1
 data_imputation = 0
