@@ -40,9 +40,9 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 ds = 1
 trial = False
 quant = True
-feature_selection = 0
-data_imputation = 1
-wandb_project = "RQ2Comb2"
+feature_selection = 1
+data_imputation = 0
+wandb_project = "RQ2Comb3"
 folder_path = "RQ2Final1"
 
 # [depth, size, max_breadth, virality, density, layer_ratio, structural_heterogeneity, characteristic_distance]
