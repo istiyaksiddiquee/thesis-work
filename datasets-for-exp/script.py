@@ -37,24 +37,43 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 2. check notebook for normalization column and selected column
 # 3. check codebase related settings
 
-ds = 2
-trial = False
+ds = 1
+trial = True
 quant = True
 feature_selection = 0
 data_imputation = 0
-wandb_project = "RQ2Comb8"
-folder_path = "RQ2Final2"
+wandb_project = "RQ2Comb1"
+folder_path = "RQ2Final1"
 
-removed_columns = ['virality', 'max_breadth']
+# [depth, size, max_breadth, virality, density, layer_ratio, structural_heterogeneity, characteristic_distance]
+
+removed_columns = ['max_breadth']
 normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
 
-if feature_selection == 1:
-    normalization_columns = list(set(normalization_columns)-set(removed_columns))
+original_column_order = ['scale__depth', 'log_norm__size', 'log_norm__max_breadth',
+    'scale__virality', 'scale__density', 'scale__layer_ratio',  'scale__structural_heterogeneity', 
+    'log_norm__characteristic_distance' ]
 
+if feature_selection == 1:
+    for item in removed_columns:
+        print(item, original_column_order) 
+        if item in normalization_columns:
+            original_column_order.remove('log_norm__max_breadth')
+        else:
+            original_column_order.remove('scale__' + item)
+            
+    normalization_columns = list(set(normalization_columns)-set(removed_columns))
+    
 # codebase related settings
 random_state = 7
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
+
+class CustomFunctionTransformer(FunctionTransformer):
+    def get_feature_names_out(self, input_features=None):
+        return input_features
+
+log_norm_custom = CustomFunctionTransformer(func=np.log)
 
 class CLFOutput:
     def __init__(self, gridsearch_dict: dict, score: float) -> None:
@@ -158,23 +177,20 @@ def nested_loop() -> list[CLFOutput]:
 
             logging.info("NESTED_LOOP: %s", f"inside loop epoch {loop_index}")
 
+            if feature_selection == 1:
+                X_train_val = X_train_val[X_train_val.columns[~X_train_val.columns.isin(removed_columns)]]
+                
             X_train, X_val = (X_train_val.iloc[train_index, :], X_train_val.iloc[val_index, :])
-
             y_train, Y_val = y_train_val.iloc[train_index], y_train_val.iloc[val_index]
 
-            if feature_selection == 1:
-                X_train = X_train[X_train.columns[~X_train.columns.isin(removed_columns)]]
-                X_val = X_val[X_val.columns[~X_val.columns.isin(removed_columns)]]
-                
             logging.info("NESTED_LOOP: %s", "feature scaling")
             normalized_df = copy(X_train)
             
-            log_normalizer = FunctionTransformer(func=np.log)
             scaler = StandardScaler()
             
             preprocessor = ColumnTransformer([
-                ('log_norm', log_normalizer, normalization_columns),  # Columns to log-normalize
-                ('scale', scaler, list(X_train.columns))  # Columns to scale
+                ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
+                ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
             ])
             
             if quant == True:
@@ -189,34 +205,43 @@ def nested_loop() -> list[CLFOutput]:
             scaled_X_train = preprocessor.fit_transform(normalized_df)
             scaled_X_val = preprocessor.transform(X_val)
             
+            transformed_columns = preprocessor.get_feature_names_out()
+            
             # only for x_train
-            scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train), pd.Series(y_train)
+            scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_X_train, columns=transformed_columns), pd.Series(y_train)
             
             if data_imputation == 1:
                 scaled_resampled_X_train, scaled_resampled_y_train = oversample_data(scaled_X_train, y_train)
+                scaled_resampled_X_train, scaled_resampled_y_train = pd.DataFrame(scaled_resampled_X_train, columns=transformed_columns), pd.Series(scaled_resampled_y_train)
+
+            scaled_X_val_df = pd.DataFrame(scaled_X_val, columns=transformed_columns)
+
+            scaled_resampled_X_train_df =  scaled_resampled_X_train[original_column_order]
+            scaled_X_val_df =  scaled_X_val_df[original_column_order]
 
             inner_cv = StratifiedKFold(n_splits=5)
 
             logging.info("NESTED_LOOP: %s", f"entering model fitting for {epoch_str}")
+            logging.info("NESTED_LOOP: %s", f"shapes of input: {scaled_resampled_X_train.shape}, {scaled_resampled_y_train.shape}, {scaled_X_val.shape}, {Y_val.shape}, ")
             
             # inside the grid search we are passing the scaled, transformed, resampled x_train. so there is a slight data leakage in the grid search process
             # but we cannot avoid it, since even if we shift this transformation down to the grid search and combine it with a proprocessor there, 
             # the same thing will happen as grid search process will not run the transformation on top of the training set leaving the hold out test set 
             
             logit_output = fit_logistic_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train_df, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val_df, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             dt_output = fit_dt_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train_df, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val_df, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             rf_output = fit_rf_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train_df, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val_df, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )            
             xgb_output = fit_xgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train_df, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val_df, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
             lgb_output = fit_lgb_model(
-                x_train_df=scaled_resampled_X_train, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
+                x_train_df=scaled_resampled_X_train_df, y_train_df=scaled_resampled_y_train, X_val=scaled_X_val_df, Y_val=Y_val, inner_cv=inner_cv, epoch_str=epoch_str
             )
 
             loop_outputs.append(logit_output)
@@ -350,12 +375,11 @@ def refitting_models(
             
         normalized_df = copy(X_train_val)
         
-        log_normalizer = FunctionTransformer(func=np.log)
         scaler = StandardScaler()
         
         preprocessor = ColumnTransformer([
-            ('log_norm', log_normalizer, normalization_columns),  # Columns to log-normalize
-            ('scale', scaler, list(X_train_val.columns))  # Columns to scale
+            ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
+            ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
         ])
         
         if quant == True:
@@ -365,12 +389,17 @@ def refitting_models(
             
         scaled_X_train_val = preprocessor.fit_transform(normalized_df)
         
+        transformed_columns = preprocessor.get_feature_names_out()
+        
         # only for x_train
-        scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val), pd.Series(y_train_val)
+        scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_X_train_val, columns=transformed_columns), pd.Series(y_train_val)
         
         if data_imputation == 1:
             scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
+            scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_resampled_X_train_val, columns=transformed_columns), pd.Series(scaled_resampled_y_train_val)
         
+        scaled_resampled_X_train_val =  scaled_resampled_X_train_val[original_column_order]
+
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
         stratified_dummy_cls = fit_dummy_classifier(scaled_resampled_X_train_val, scaled_resampled_y_train_val, "stratified")
@@ -567,7 +596,7 @@ def oversample_data(X: pd.Series, y: pd.Series):
     
     oversampler = sv.polynom_fit_SMOTE_poly()
     X_samp, y_samp = oversampler.sample(X, y)
-    X_samp, y_samp = pd.DataFrame(X_samp), pd.Series(y_samp)
+    # X_samp, y_samp = pd.DataFrame(X_samp), pd.Series(y_samp)
 
     return X_samp, y_samp
 
