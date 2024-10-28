@@ -42,16 +42,16 @@ trial = False
 quant = True
 feature_selection = 1
 data_imputation = 1
-wandb_project = "RQ3Final4"
-folder_path = "RQ3Final4"
+wandb_project = "RQ4Final1"
+folder_path = "RQ4Final1"
 
 # [depth, size, max_breadth, virality, density, layer_ratio, structural_heterogeneity, characteristic_distance]
 
-removed_columns = ['max_breadth']
-normalization_columns = ['size', 'max_breadth', 'characteristic_distance']
+removed_columns = ['virality']
+normalization_columns = ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
 
 original_column_order = ['scale__depth', 'log_norm__size', 'log_norm__max_breadth',
-    'scale__virality', 'scale__density', 'scale__layer_ratio',  'scale__structural_heterogeneity', 
+    'log_norm__virality', 'scale__density', 'log_norm__layer_ratio', 'log_norm__structural_heterogeneity', 
     'log_norm__characteristic_distance' ]
 
 if feature_selection == 1:
