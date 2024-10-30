@@ -38,7 +38,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 trial = False
-wandb_project = "RQ2Final1"
+wandb_project = "RQ2Final2"
 folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
 data_imputation = 1
 feature_selection = 1
