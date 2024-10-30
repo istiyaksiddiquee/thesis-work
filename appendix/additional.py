@@ -39,12 +39,13 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 
 trial = False
 wandb_project = "Appendix1"
-folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
-data_imputation = 1
-feature_selection = 1
-ds = 2
 
 configuration = {
+    'Appendix1_folder': 'one_yeast',
+    'Appendix2_folder': 'three_yeast',
+    'Appendix3_folder': 'shuttle',
+    'Appendix4_folder': 'segment',
+    
     'Appendix1_drop': ['Erl'],
     'Appendix2_drop': ['Nuc'],
     'Appendix3_drop': ['A7', 'A8', 'A9'],
@@ -56,11 +57,14 @@ configuration = {
     'Appendix4_order': ['Region-centroid-col', 'Region-centroid-row', 'Short-line-density-5', 'Short-line-density-2', 'Vedge-mean', 'Vegde-sd', 'Hedge-mean', 'Hedge-sd', 'Rawred-mean', 'Exred-mean', 'Exgreen-mean', 'Saturatoin-mean', 'Hue-mean']
 }
 
-removed_columns = configuration[f'{folder_path}_drop']
-order = configuration[f'{folder_path}_order']
-
+folder_path = configuration[f'{wandb_project}_folder'] # change it for RQ2Final1, RQ2Final2
+removed_columns = configuration[f'{wandb_project}_drop']
+order = configuration[f'{wandb_project}_order']
 
 # codebase related settings
+data_imputation = 1
+feature_selection = 1
+ds = 2
 random_state = 7
 optimization_metric = "average_precision_score"
 default_metric = "val_average_precision"
@@ -120,8 +124,8 @@ def read_pickled_input_files(file_path: str):
     X_train_val = None
     y_train_val = None
 
-    X_train_val_file_name = file_path + "_x_train_val.pickle"
-    y_train_val_file_name = file_path + "_y_train_val.pickle"
+    X_train_val_file_name = "x_train_val.pickle"
+    y_train_val_file_name = "y_train_val.pickle"
         
     with open(os.path.join(file_path, X_train_val_file_name), "rb") as file:
         X_train_val = pickle.load(file)
@@ -152,6 +156,8 @@ def nested_loop() -> list[CLFOutput]:
 
         logging.info("NESTED_LOOP: %s", "entering nested loop")
 
+        logging.info("NESTED_LOOP: %s", f"got following order: {order}")
+        
         outer_cv = StratifiedKFold(n_splits=5)
 
         loop_index = 0
