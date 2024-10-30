@@ -38,7 +38,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 trial = False
-wandb_project = "RQ3Final1"
+wandb_project = "RQ3Final2"
 folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
 data_imputation = 1
 feature_selection = 1
@@ -475,9 +475,9 @@ def refitting_models(
             logistic = LogisticRegression(**trained_logit_model)
             refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
-            joblib.dump(refit_logit, "logit.joblib")
             if not trial:
                 wandb.init(project=wandb_project, group="logit", job_type="final")
+                joblib.dump(refit_logit, "logit.joblib")
                 logit_artifact = wandb.Artifact(
                     "Logistic-Model",
                     type="model",
@@ -499,10 +499,10 @@ def refitting_models(
             dt = DecisionTreeClassifier(**trained_dt_model)
             refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-            joblib.dump(refit_dt, "dt.joblib")
             if not trial:
                 
                 wandb.init(project=wandb_project, group="dt", job_type="final")
+                joblib.dump(refit_dt, "dt.joblib")
                 dt_artifact = wandb.Artifact(
                     "DT-Model",
                     type="model",
@@ -524,10 +524,10 @@ def refitting_models(
             rf = RandomForestClassifier(**trained_rf_model)
             refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-            joblib.dump(refit_rf, "rf.joblib")
             if not trial:
                 
                 wandb.init(project=wandb_project, group="rf", job_type="final")
+                joblib.dump(refit_rf, "rf.joblib")
                 rf_artifact = wandb.Artifact(
                     "RF-Model",
                     type="model",
@@ -550,9 +550,9 @@ def refitting_models(
             xgboost = xgboost.set_params(**trained_xgb_model)
             refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
-            joblib.dump(refit_xgb, "xgb.joblib")
             if not trial:
                 wandb.init(project=wandb_project, group="xgb", job_type="final")
+                joblib.dump(refit_xgb, "xgb.joblib")
                 xgb_artifact = wandb.Artifact(
                     "XGB-Model",
                     type="model",
@@ -575,10 +575,10 @@ def refitting_models(
             lgb_model = lgb_model.set_params(**trained_lgb_model)
             refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
-            joblib.dump(refit_lgb, "lgb.joblib")
             if not trial:
 
                 wandb.init(project=wandb_project, group="lgb", job_type="final")
+                joblib.dump(refit_lgb, "lgb.joblib")
                 lgb_artifact = wandb.Artifact(
                     "LGB-Model",
                     type="model",
