@@ -34,35 +34,59 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 
 # direction: check the following before running an experiment 
 # 1. change wandb_project and folder_path according to the experiment name
-# 2. check notebook for normalization column and selected column
+# 2. check weights and biases page to remove or rename the previous project
 # 3. check codebase related settings
 
-ds = 2
 trial = False
-quant = True
-feature_selection = 1
+wandb_project = "RQ3Final1"
+folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
 data_imputation = 1
-wandb_project = "RQ4Final1"
-folder_path = "RQ4Final1"
+feature_selection = 1
 
-# [depth, size, max_breadth, virality, density, layer_ratio, structural_heterogeneity, characteristic_distance]
+configuration = {
+    'RQ2Final1_ds': 1,
+    'RQ2Final2_ds': 2,
+    'RQ3Final1_ds': 1,
+    'RQ3Final2_ds': 1,
+    'RQ3Final3_ds': 2,
+    'RQ3Final4_ds': 2,
+    'RQ4Final1_ds': 2,
+    
+    'RQ2Final1_quant': True,
+    'RQ2Final2_quant': True,
+    'RQ3Final1_quant': True,
+    'RQ3Final2_quant': False,
+    'RQ3Final3_quant': False,
+    'RQ3Final4_quant': True,
+    'RQ4Final1_quant': True,
+    
+    'RQ2Final1_drop': ['max_breadth'],
+    'RQ2Final2_drop': ['max_breadth', 'virality'],
+    'RQ3Final1_drop': ['size', 'max_breadth'],
+    'RQ3Final2_drop': ['max_breadth'],
+    'RQ3Final3_drop': ['size', 'max_breadth', 'virality'],
+    'RQ3Final4_drop': ['max_breadth'],
+    'RQ4Final1_drop': ['virality'],
+    
+    'RQ2Final1_norm': ['size', 'max_breadth', 'characteristic_distance'],
+    'RQ2Final2_norm': ['size', 'max_breadth', 'characteristic_distance'],
+    'RQ3Final1_norm': ['size', 'max_breadth', 'characteristic_distance'],
+    'RQ3Final2_norm': ['size', 'max_breadth'],
+    'RQ3Final3_norm': ['size', 'max_breadth', 'characteristic_distance'],
+    'RQ3Final4_norm': ['size', 'max_breadth', 'characteristic_distance'],
+    'RQ4Final1_norm': ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance'],
+}
 
-removed_columns = ['virality']
-normalization_columns = ['size', 'max_breadth', 'virality', 'layer_ratio', 'structural_heterogeneity', 'characteristic_distance']
+ds = configuration[f'{folder_path}_ds']
+quant = configuration[f'{folder_path}_quant']
+removed_columns = configuration[f'{folder_path}_drop']
+normalization_columns = configuration[f'{folder_path}_norm']
 
-original_column_order = ['scale__depth', 'log_norm__size', 'log_norm__max_breadth',
-    'log_norm__virality', 'scale__density', 'log_norm__layer_ratio', 'log_norm__structural_heterogeneity', 
-    'log_norm__characteristic_distance' ]
+order = ['depth', 'size', 'max_breadth', 'virality', 'density', 'layer_ratio',  'structural_heterogeneity',  'characteristic_distance']
 
 if feature_selection == 1:
-    for item in removed_columns:
-        print(item, original_column_order) 
-        if item in normalization_columns:
-            original_column_order.remove('log_norm__'+item)
-        else:
-            original_column_order.remove('scale__' + item)
-            
-    normalization_columns = list(set(normalization_columns)-set(removed_columns))
+    order = [item for item in order if item not in removed_columns]
+    normalization_columns = [item for item in normalization_columns if item not in removed_columns]
     
 # codebase related settings
 random_state = 7
@@ -191,7 +215,7 @@ def nested_loop() -> list[CLFOutput]:
             preprocessor = ColumnTransformer([
                 ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
                 ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
-            ])
+            ], verbose_feature_names_out=False)
             
             if quant == True:
                 cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
@@ -216,8 +240,8 @@ def nested_loop() -> list[CLFOutput]:
 
             scaled_X_val_df = pd.DataFrame(scaled_X_val, columns=transformed_columns)
 
-            scaled_resampled_X_train_df =  scaled_resampled_X_train[original_column_order]
-            scaled_X_val_df =  scaled_X_val_df[original_column_order]
+            scaled_resampled_X_train_df =  scaled_resampled_X_train[order]
+            scaled_X_val_df =  scaled_X_val_df[order]
 
             inner_cv = StratifiedKFold(n_splits=5)
 
@@ -380,7 +404,7 @@ def refitting_models(
         preprocessor = ColumnTransformer([
             ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
             ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
-        ])
+        ], verbose_feature_names_out=False)
         
         if quant == True:
             cd_first_quantile = np.quantile(normalized_df["characteristic_distance"], 0.25)
@@ -398,7 +422,7 @@ def refitting_models(
             scaled_resampled_X_train_val, scaled_resampled_y_train_val = oversample_data(scaled_X_train_val, y_train_val)
             scaled_resampled_X_train_val, scaled_resampled_y_train_val = pd.DataFrame(scaled_resampled_X_train_val, columns=transformed_columns), pd.Series(scaled_resampled_y_train_val)
         
-        scaled_resampled_X_train_val =  scaled_resampled_X_train_val[original_column_order]
+        scaled_resampled_X_train_val =  scaled_resampled_X_train_val[order]
 
         logging.info("REFITTING_MODELS: %s", "data ready, initiating processing")
         
@@ -451,9 +475,9 @@ def refitting_models(
             logistic = LogisticRegression(**trained_logit_model)
             refit_logit = logistic.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
+            joblib.dump(refit_logit, "logit.joblib")
             if not trial:
                 wandb.init(project=wandb_project, group="logit", job_type="final")
-                joblib.dump(refit_logit, "logit.joblib")
                 logit_artifact = wandb.Artifact(
                     "Logistic-Model",
                     type="model",
@@ -475,10 +499,10 @@ def refitting_models(
             dt = DecisionTreeClassifier(**trained_dt_model)
             refit_dt = dt.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
+            joblib.dump(refit_dt, "dt.joblib")
             if not trial:
                 
                 wandb.init(project=wandb_project, group="dt", job_type="final")
-                joblib.dump(refit_dt, "dt.joblib")
                 dt_artifact = wandb.Artifact(
                     "DT-Model",
                     type="model",
@@ -500,10 +524,10 @@ def refitting_models(
             rf = RandomForestClassifier(**trained_rf_model)
             refit_rf = rf.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
+            joblib.dump(refit_rf, "rf.joblib")
             if not trial:
                 
                 wandb.init(project=wandb_project, group="rf", job_type="final")
-                joblib.dump(refit_rf, "rf.joblib")
                 rf_artifact = wandb.Artifact(
                     "RF-Model",
                     type="model",
@@ -526,9 +550,9 @@ def refitting_models(
             xgboost = xgboost.set_params(**trained_xgb_model)
             refit_xgb = xgboost.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
 
+            joblib.dump(refit_xgb, "xgb.joblib")
             if not trial:
                 wandb.init(project=wandb_project, group="xgb", job_type="final")
-                joblib.dump(refit_xgb, "xgb.joblib")
                 xgb_artifact = wandb.Artifact(
                     "XGB-Model",
                     type="model",
@@ -547,14 +571,14 @@ def refitting_models(
 
             # store lgb model
             logging.info("REFITTING_MODELS: %s", "processing lgb model.")
-            lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
+            lgb_model = lgb.LGBMClassifier(objective="binary", verbosity=-1, random_state=42)
             lgb_model = lgb_model.set_params(**trained_lgb_model)
             refit_lgb = lgb_model.fit(scaled_resampled_X_train_val, scaled_resampled_y_train_val)
             
+            joblib.dump(refit_lgb, "lgb.joblib")
             if not trial:
 
                 wandb.init(project=wandb_project, group="lgb", job_type="final")
-                joblib.dump(refit_lgb, "lgb.joblib")
                 lgb_artifact = wandb.Artifact(
                     "LGB-Model",
                     type="model",
@@ -1132,7 +1156,7 @@ def fit_lgb_model(x_train_df: pd.Series, y_train_df: pd.Series, X_val: pd.Series
                 "min_data_in_leaf": [_ for _ in np.arange(10, 30+15, 15)],
                 "min_gain_to_split": [_ for _ in np.arange(0.1, 1+0.2, 0.2)],
             }
-        lgb_model = lgb.LGBMClassifier(objective="binary", random_state=42)
+        lgb_model = lgb.LGBMClassifier(objective="binary", verbosity=-1, random_state=42)
 
         if trial == True:
             lgb_grid = {"num_leaves": [31]}
