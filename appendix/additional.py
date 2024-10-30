@@ -38,7 +38,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 trial = False
-wandb_project = "Appendix1"
+wandb_project = "Appendix2"
 
 configuration = {
     'Appendix1_folder': 'one_yeast',
