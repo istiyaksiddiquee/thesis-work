@@ -84,10 +84,6 @@ normalization_columns = configuration[f'{folder_path}_norm']
 
 order = ['depth', 'size', 'max_breadth', 'virality', 'density', 'layer_ratio',  'structural_heterogeneity',  'characteristic_distance']
 
-print('------------------------')
-print(ds)
-print('------------------------')
-
 if feature_selection == 1:
     order = [item for item in order if item not in removed_columns]
     normalization_columns = [item for item in normalization_columns if item not in removed_columns]
