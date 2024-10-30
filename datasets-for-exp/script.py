@@ -38,7 +38,7 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 trial = False
-wandb_project = "RQ4Final1"
+wandb_project = "RQ2Final1"
 folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
 data_imputation = 1
 feature_selection = 1
@@ -83,6 +83,10 @@ removed_columns = configuration[f'{folder_path}_drop']
 normalization_columns = configuration[f'{folder_path}_norm']
 
 order = ['depth', 'size', 'max_breadth', 'virality', 'density', 'layer_ratio',  'structural_heterogeneity',  'characteristic_distance']
+
+print('------------------------')
+print(ds)
+print('------------------------')
 
 if feature_selection == 1:
     order = [item for item in order if item not in removed_columns]
