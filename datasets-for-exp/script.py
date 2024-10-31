@@ -38,10 +38,10 @@ from sklearn.model_selection import StratifiedKFold, HalvingGridSearchCV
 # 3. check codebase related settings
 
 trial = False
-wandb_project = "RQ2Final2"
-folder_path = wandb_project # change it for RQ2Final1, RQ2Final2
+wandb_project = "RQ2Comb9"
+folder_path = "RQ2Final1" # change it for RQ2Final1, RQ2Final2
 data_imputation = 1
-feature_selection = 1
+feature_selection = 0
 
 configuration = {
     'RQ2Final1_ds': 1,
@@ -213,8 +213,8 @@ def nested_loop() -> list[CLFOutput]:
             scaler = StandardScaler()
             
             preprocessor = ColumnTransformer([
-                ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
-                ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
+                # ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
+                ('scale', scaler, list(X_train_val.columns))  # Columns to scale
             ], verbose_feature_names_out=False)
             
             if quant == True:
@@ -402,8 +402,8 @@ def refitting_models(
         scaler = StandardScaler()
         
         preprocessor = ColumnTransformer([
-            ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
-            ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
+            # ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
+            ('scale', scaler, list(X_train_val.columns))  # Columns to scale
         ], verbose_feature_names_out=False)
         
         if quant == True:
