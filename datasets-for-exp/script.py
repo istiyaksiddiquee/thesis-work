@@ -403,7 +403,7 @@ def refitting_models(
         
         preprocessor = ColumnTransformer([
             # ('log_norm', log_norm_custom, normalization_columns),  # Columns to log-normalize
-            ('scale', scaler, list(X_train_val.columns))  # Columns to scale
+            ('scale', scaler, list(set(list(X_train_val.columns)) - set(normalization_columns)))  # Columns to scale
         ], verbose_feature_names_out=False)
         
         if quant == True:
