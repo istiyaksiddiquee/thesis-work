@@ -3,85 +3,85 @@
   become: yes # Run as root
 
   tasks:
-    - name: Configure containerd
-      become: yes
-      shell: |
-        tee /etc/modules-load.d/containerd.conf <<EOF
-        overlay
-        br_netfilter
-        EOF
-        modprobe overlay
-        modprobe br_netfilter
-    - name: Configure kernel
-      become: yes
-      shell: |
-        tee /etc/sysctl.d/kubernetes.conf <<EOF
-        net.bridge.bridge-nf-call-ip6tables = 1
-        net.bridge.bridge-nf-call-iptables = 1
-        net.ipv4.ip_forward = 1
-        EOF
-    - name: Apply changes
-      become: yes
-      shell: sysctl --system
-    - name: Install containerd dependencies
-      apt:
-        name: [ 'apt-transport-https','ca-certificates','curl','gnupg-agent','software-properties-common' ]
-        state: present
-        update_cache: yes
-    - name: Add containerd asc key
-      get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
+#     - name: Configure containerd
+#       become: yes
+#       shell: |
+#         tee /etc/modules-load.d/containerd.conf <<EOF
+#         overlay
+#         br_netfilter
+#         EOF
+#         modprobe overlay
+#         modprobe br_netfilter
+#     - name: Configure kernel
+#       become: yes
+#       shell: |
+#         tee /etc/sysctl.d/kubernetes.conf <<EOF
+#         net.bridge.bridge-nf-call-ip6tables = 1
+#         net.bridge.bridge-nf-call-iptables = 1
+#         net.ipv4.ip_forward = 1
+#         EOF
+#     - name: Apply changes
+#       become: yes
+#       shell: sysctl --system
+#     - name: Install containerd dependencies
+#       apt:
+#         name: [ 'apt-transport-https','ca-certificates','curl','gnupg-agent','software-properties-common' ]
+#         state: present
+#         update_cache: yes
+#     - name: Add containerd asc key
+#       get_url:
+#         url: https://download.docker.com/linux/ubuntu/gpg
+#         dest: /etc/apt/keyrings/docker.asc
         
-#   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  # $(. /etc/os-release && echo "$VERSION_CODENAME") stable"
+# #   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+#   # $(. /etc/os-release && echo "$VERSION_CODENAME") stable"
 
-    - name: Add containerd software repository
-      apt_repository:
-        repo: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable
-        state: present
-        filename: docker.list
-        update_cache: yes
-    - name: Install containerd
-      apt:
-        name: [ 'containerd.io' ]
-        state: present
-        update_cache: yes
-    - name: Configure containerd
-      become: yes
-      shell: |
-        mkdir -p /etc/containerd
-        containerd config default | tee /etc/containerd/config.toml
-        sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
-    - name: Restart and enable containerd
-      systemd:
-        name: containerd
-        state: restarted
-        enabled: yes
-    - name: Disable swap
-      shell: swapoff -a
-    - name: Stop swap from mounting
-      shell: sed -i 's/^\/swap/#\/swap/g' /etc/fstab
-    - name: Install dependencies
-      apt:
-        name: [ 'apt-transport-https','ca-certificates','curl','gnupg-agent','software-properties-common' ]
-        state: present
-        update_cache: yes
-    - name: Add Kubernetes asc key
-      get_url:
-        url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
-        dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
-    - name: Add Kubernetes software repository
-      apt_repository:
-        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
-        state: present
-        filename: kubernetes.list
-        update_cache: yes
-    - name: Install kubernetes
-      apt:
-        name: [ 'kubelet','kubeadm','kubectl' ]
-        state: present
-        update_cache: yes
+#     - name: Add containerd software repository
+#       apt_repository:
+#         repo: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable
+#         state: present
+#         filename: docker.list
+#         update_cache: yes
+#     - name: Install containerd
+#       apt:
+#         name: [ 'containerd.io' ]
+#         state: present
+#         update_cache: yes
+#     - name: Configure containerd
+#       become: yes
+#       shell: |
+#         mkdir -p /etc/containerd
+#         containerd config default | tee /etc/containerd/config.toml
+#         sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+#     - name: Restart and enable containerd
+#       systemd:
+#         name: containerd
+#         state: restarted
+#         enabled: yes
+#     - name: Disable swap
+#       shell: swapoff -a
+#     - name: Stop swap from mounting
+#       shell: sed -i 's/^\/swap/#\/swap/g' /etc/fstab
+#     - name: Install dependencies
+#       apt:
+#         name: [ 'apt-transport-https','ca-certificates','curl','gnupg-agent','software-properties-common' ]
+#         state: present
+#         update_cache: yes
+#     - name: Add Kubernetes asc key
+#       get_url:
+#         url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
+#         dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+#     - name: Add Kubernetes software repository
+#       apt_repository:
+#         repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
+#         state: present
+#         filename: kubernetes.list
+#         update_cache: yes
+#     - name: Install kubernetes
+#       apt:
+#         name: [ 'kubelet','kubeadm','kubectl' ]
+#         state: present
+#         update_cache: yes
     - name: Hold kubelet package at current version
       ansible.builtin.dpkg_selections:
         name: 'kubelet'
@@ -145,18 +145,18 @@
         name: "DUMMY_HOST"
         JOIN_COMMAND: "{{ kubernetes_join_command.stdout_lines[0] }}"
     
-    - name: Download Helm for Kubernetes
-      command: wget -q -o /dev/null https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz 
+    # - name: Download Helm for Kubernetes
+    #   command: wget -q -o /dev/null https://get.helm.sh/helm-v3.13.2-linux-amd64.tar.gz 
     
-    - name: untar 
-      command: tar -zxvf helm-v3.13.2-linux-amd64.tar.gz
+    # - name: untar 
+    #   command: tar -zxvf helm-v3.13.2-linux-amd64.tar.gz
 
-    - name: move helm to path
-      command: mv linux-amd64/helm /usr/local/bin/helm 
-      become: yes
+    # - name: move helm to path
+    #   command: mv linux-amd64/helm /usr/local/bin/helm 
+    #   become: yes
     
-    - name: helm cleanup
-      command: rm helm-v3.13.2-linux-amd64.tar.gz & rm -rf linux-amd64
+    # - name: helm cleanup
+    #   command: rm helm-v3.13.2-linux-amd64.tar.gz & rm -rf linux-amd64
 
     # - name: download flytectl
     #   command: curl -sL https://ctl.flyte.org/install | bash
